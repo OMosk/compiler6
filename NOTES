@@ -1,0 +1,11 @@
+GOALS
+- Totally standalone compiler
+- generate own bytecode with basic block/ssa/code flow analysis
+- bytecode executer
+- multithreaded
+
+TODO:
+- In Token struct vove Str to `int32 start, end;` and const char *base to Tokens struct. It will save 1/3 of Token struct
+- Redo FILL_ERROR to take index of token explicitly
+
+

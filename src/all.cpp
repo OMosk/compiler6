@@ -1,0 +1,6 @@
+#include "main.cpp"
+#include "utils.cpp"
+#include "lexer.cpp"
+#include "ast.cpp"
+#include "parser.cpp"
+#include "compiler.cpp"
