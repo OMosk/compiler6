@@ -6,6 +6,7 @@ namespace parser {
 
 #define T(I) (tokens->arr.data + (I))
 #define TT(I) ((tokens->arr.data + (I))->tokenType)
+#define TStr(I) (Str{.data = tokens->fileContent.data + T(I)->begin, .len = T(I)->length})
 
 void fillError(Error *error, int fileIndex, Token *t, int tokenIndex, Str message) {
   error->site.file = fileIndex;
@@ -64,20 +65,20 @@ ASTNode *parseUnaryExpression(Tokens *tokens, int *outI, Error *error) {
     } break;
     case TokenIdentifier: {
       ASTIdentifier *ident = ASTALLOC(ASTIdentifier, i);
-      ident->name = T(i)->value;
+      ident->name = TStr(i);
       i++;
       bottom = ident;
     } break;
     case TokenNumber: {
       ASTLiteral *literal = ASTALLOC(ASTLiteral, i);
-      literal->raw = T(i)->value;
+      literal->raw = TStr(i);
       literal->literalKind = LiteralKindNumber;
       i++;
       bottom = literal;
     } break;
     case TokenStringLiteral: {
       ASTLiteral *literal = ASTALLOC(ASTLiteral, i);
-      literal->raw = T(i)->value;
+      literal->raw = TStr(i);
       literal->literalKind = LiteralKindString;
       i++;
       bottom = literal;
@@ -120,7 +121,7 @@ ASTNode *parseUnaryExpression(Tokens *tokens, int *outI, Error *error) {
             return NULL;
           }
           ma->container = bottom;
-          ma->name = T(i)->value;
+          ma->name = TStr(i);
           i++;
           bottom = ma;
         }
@@ -235,7 +236,7 @@ ASTNode *parseType(Tokens *tokens, int *outI, Error *error) {
 
       case TokenIdentifier: {
         auto ident = ASTALLOC(ASTIdentifier, i);
-        ident->name = T(i)->value;
+        ident->name = TStr(i);
         tmp = ident;
         i++;
         prevExpectsSuccessor = false;
@@ -307,7 +308,7 @@ ASTVariableDefinition *parseLongVariableDifinition(
   resize(&varDefn->vars, expectVars);
   for (int varNo = 0; varNo < expectVars; ++varNo) {
     varDefn->vars[varNo] = ASTALLOC(ASTVariable, i);
-    varDefn->vars[varNo]->name = T(i)->value;
+    varDefn->vars[varNo]->name = TStr(i);
     i++;
     if (TT(i) == ',') i++;
   }
@@ -403,7 +404,7 @@ ASTProc *parseProc(Tokens *tokens, int *outI, Error *error) {
   i++;
 
   if (T(i)->tokenType == TokenIdentifier) {
-    proc->name = T(i)->value;
+    proc->name = TStr(i);
     i++;
   }
 
@@ -429,7 +430,7 @@ ASTProc *parseProc(Tokens *tokens, int *outI, Error *error) {
       for (;;) {
         if (T(i)->tokenType == TokenIdentifier) {
           auto arg = ASTALLOC(ASTProcArgument, i);
-          arg->name = T(i)->value;
+          arg->name = TStr(i);
           append(&proc->arguments, arg);
           endArgumentWithSameType++;
           i++;

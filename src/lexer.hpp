@@ -49,12 +49,15 @@ struct Token {
   uint32_t line;
   uint16_t col;
   int16_t tokenType;
-  Str value;
+  uint32_t begin;
+  uint32_t length;
+  //Str value;
 };
 
 struct Tokens {
   bool ok;
   int fileIndex;
+  Str fileContent;
   Array<Token> arr;
 };
 

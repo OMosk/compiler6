@@ -35,49 +35,7 @@ void SkipWhitespace(char **it, Site *it_loc, char *end) {
   } while (true);
 }
 
-// void SkipWhitespaceAndNewLines(char **it, Site *it_loc, char *end) {
-//   char *tmp_it = *it;
-//   Site tmp_it_loc = *it_loc;
-//   char *tmp_it_prev;
-//   int32_t ch;
-//   do {
-//     Site tmp_it_loc_prev = tmp_it_loc;
-//     ADVANCE(ch, tmp_it, &tmp_it_loc, tmp_it_prev, end);
-//     switch (ch) {
-//       case ' ':
-//       case '\t':
-//       case '\n':
-//         break;
-//       default:
-//         *it = tmp_it_prev;
-//         *it_loc = tmp_it_loc_prev;
-//         return;
-//     }
-//   } while (true);
-// }
-// 
-// bool MatchNewlines(char **it, Site *it_loc, char *end, Token *t) {
-//   char *tmp_it = *it;
-//   Site tmp_it_loc = *it_loc;
-//   char *tmp_it_prev;
-//   int32_t ch;
-//   ADVANCE(ch, tmp_it, &tmp_it_loc, tmp_it_prev, end);
-//   if (ch != '\n') {
-//     return false;
-//   }
-//   t->loc.start = tmp_it;
-//   t->tokenType = '\n';
-// 
-//   SkipWhitespaceAndNewLines(&tmp_it, &tmp_it_loc, end);
-// 
-//   t->loc.end = tmp_it;
-//   *it = tmp_it;
-//   *it_loc = tmp_it_loc;
-//   return true;
-// }
-
-
-bool MatchLineComment(char **it, Site *it_loc, char *end, Token *t) {
+bool MatchLineComment(char **it, Site *it_loc, char *begin, char *end, Token *t) {
   char *tmp_it = *it;
   Site tmp_it_loc = *it_loc;
   char *tmp_it_prev;
@@ -90,13 +48,13 @@ bool MatchLineComment(char **it, Site *it_loc, char *end, Token *t) {
   if (ch != '/') {
     return false;
   }
-  t->value.data = tmp_it;
+  t->begin = tmp_it - begin;
 
   do {
     ADVANCE(ch, tmp_it, &tmp_it_loc, tmp_it_prev, end);
   } while (ch != '\n');
 
-  t->value.len = tmp_it - t->value.data;
+  t->length = tmp_it - (begin + t->begin);
   //t->loc.start = *it;
   //t->loc.end = tmp_it;
   t->tokenType = TokenLineComment;
@@ -105,7 +63,7 @@ bool MatchLineComment(char **it, Site *it_loc, char *end, Token *t) {
   return true;
 }
 
-bool MatchIdentifierOrKeyword(char **it, Site *it_loc, char *end, Token *t) {
+bool MatchIdentifierOrKeyword(char **it, Site *it_loc, char *begin, char *end, Token *t) {
   char *tmp_it = *it;
   Site tmp_it_loc = *it_loc, tmp_it_loc_prev;
   char *tmp_it_prev;
@@ -130,8 +88,8 @@ bool MatchIdentifierOrKeyword(char **it, Site *it_loc, char *end, Token *t) {
     return false;
   }
 
-  t->value.data = *it;
-  t->value.len = tmp_it_prev - *it;
+  t->begin = *it - begin;
+  t->length = tmp_it_prev - (begin + t->begin);
 
   //t->loc.start = *it;
   //t->loc.end = tmp_it_prev;
@@ -139,7 +97,7 @@ bool MatchIdentifierOrKeyword(char **it, Site *it_loc, char *end, Token *t) {
   t->tokenType = TokenIdentifier;
   *it = tmp_it_prev;
   *it_loc = tmp_it_loc_prev;
-#define KEYWORD(S, TYPE) do { if (t->value.len == sizeof(S)-1 && memcmp(t->value.data, S, t->value.len) == 0) {\
+#define KEYWORD(S, TYPE) do { if (t->length == sizeof(S)-1 && memcmp(begin + t->begin, S, sizeof(S) - 1) == 0) {\
   t->tokenType = TYPE;\
 }} while (0)
 
@@ -161,7 +119,7 @@ bool MatchIdentifierOrKeyword(char **it, Site *it_loc, char *end, Token *t) {
   return true;
 }
 
-bool MatchDirectives(char **it, Site *it_loc, char *end, Token *t) {
+bool MatchDirectives(char **it, Site *it_loc, char *begin, char *end, Token *t) {
 
   auto *tmp_it = *it;
   Site tmp_it_loc = *it_loc;
@@ -170,10 +128,10 @@ bool MatchDirectives(char **it, Site *it_loc, char *end, Token *t) {
   auto tmp_it_loc_prev = tmp_it_loc;
   ADVANCE(ch, tmp_it, &tmp_it_loc, tmp_it_prev, end);
   if (ch == '#') {
-    if (MatchIdentifierOrKeyword(&tmp_it, &tmp_it_loc, end, t)) {
+    if (MatchIdentifierOrKeyword(&tmp_it, &tmp_it_loc, begin, end, t)) {
       /*if (t->tokenType == TokenIdentifier)*/ {
         #define CASE(S, TokenType) \
-          if ((sizeof(S)-1) == t->value.len && memcmp(t->value.data, S, t->value.len) == 0) {\
+          if ((sizeof(S)-1) == t->length && memcmp(begin + t->begin, S, sizeof(S)-1) == 0) {\
             *it = tmp_it;\
             *it_loc = tmp_it_loc;\
             t->tokenType = TokenType;\
@@ -186,7 +144,7 @@ bool MatchDirectives(char **it, Site *it_loc, char *end, Token *t) {
         CASE("export_scope", TokenExportScope)
         CASE("module_scope", TokenModuleScope)
         #undef CASE
-        showError(tmp_it_loc_prev, "Unknown directive %.*s", (int)t->value.len, t->value.data);
+        showError(tmp_it_loc_prev, "Unknown directive %.*s", (int)t->length, begin + t->begin);
         showCodeLocation(tmp_it_loc_prev);
         //if (t->value)
       }
@@ -196,7 +154,7 @@ bool MatchDirectives(char **it, Site *it_loc, char *end, Token *t) {
   return false;
 }
 
-bool MatchNumber(char **it, Site *it_loc, char *end, Token *t) {
+bool MatchNumber(char **it, Site *it_loc, char *begin, char *end, Token *t) {
   char *tmp_it = *it;
   Site tmp_it_loc = *it_loc, tmp_it_loc_prev;
   char *tmp_it_prev;
@@ -238,8 +196,8 @@ bool MatchNumber(char **it, Site *it_loc, char *end, Token *t) {
     }
   }
 
-  t->value.data = *it;
-  t->value.len = tmp_it_prev - *it;
+  t->begin = *it - begin;
+  t->length = tmp_it_prev - (begin + t->begin);
 
   //t->loc.start = *it;
   //t->loc.end = tmp_it_prev;
@@ -252,7 +210,7 @@ bool MatchNumber(char **it, Site *it_loc, char *end, Token *t) {
   return true;
 }
 
-bool MatchCharSequence(char **it, Site *it_loc, char *end, Token *t,
+bool MatchCharSequence(char **it, Site *it_loc, char *begin, char *end, Token *t,
     const char *seq, int token_type) {
   char *tmp_it = *it;
   Site tmp_it_loc = *it_loc;
@@ -268,8 +226,8 @@ bool MatchCharSequence(char **it, Site *it_loc, char *end, Token *t,
     seq_it += 1;
   }
 
-  t->value.data = *it;
-  t->value.len = tmp_it - *it;
+  t->begin = *it - begin;
+  t->length = tmp_it - *it;
 
   //t->loc.start = *it;
   //t->loc.end = tmp_it;
@@ -280,12 +238,12 @@ bool MatchCharSequence(char **it, Site *it_loc, char *end, Token *t,
   return true;
 }
 
-bool MatchEOF(char **it, Site *it_loc, char *end, Token *t) {
+bool MatchEOF(char **it, Site *it_loc, char *begin, char *end, Token *t) {
   char eof[] = {-1, 0};
-  return MatchCharSequence(it, it_loc, end, t, eof, TokenEOF);
+  return MatchCharSequence(it, it_loc, begin, end, t, eof, TokenEOF);
 }
 
-bool MatchStringLiteral(char **it, Site *it_loc, char *end, Token *t) {
+bool MatchStringLiteral(char **it, Site *it_loc, char *begin, char *end, Token *t) {
   char *tmp_it = *it;
   Site tmp_it_loc = *it_loc;
   char *tmp_it_prev;
@@ -371,8 +329,8 @@ bool MatchStringLiteral(char **it, Site *it_loc, char *end, Token *t) {
 
   char *content_end = tmp_it_prev;
 
-  t->value.data = content_start;
-  t->value.len = (content_end - content_start) - end_offset;
+  t->begin = content_start - begin;
+  t->length = (content_end - content_start) - end_offset;
 
   //t->loc.start = *it;
   //t->loc.end = tmp_it;
@@ -396,9 +354,12 @@ Tokens tokenize(Str content, const char *abs_filename, const char *relative_file
   FileEntry entry = {};
   entry.absolute_path = abs_filename;
   entry.relative_path = relative_filename;
+  //TODO: investigate why we need to make a copy of file content
+  // - probably character escaping
   entry.content = StrDup(content);
 
   result.fileIndex = files.len;
+  result.fileContent = content;
   append(&files, entry);
 
   char *it = content.data;
@@ -411,17 +372,19 @@ Tokens tokenize(Str content, const char *abs_filename, const char *relative_file
 
   while (it < end) {
     token.tokenType = 0;
-    token.value = {};
+    token.begin = 0;
+    token.length = 0;
+    //token.value = {};
 
     SkipWhitespace(&it, &it_loc, end);
     token.line = it_loc.line;
     token.col = it_loc.col;
 #define M(x) if (x) goto handle_match
-#define Seq(s, type) M(MatchCharSequence(&it, &it_loc, end, &token, s, type))
-#define KEYWORD(S, TYPE) M(MatchKeyword(&it, &it_loc, end, &token, S, sizeof(S) - 1, TYPE))
+#define Seq(s, type) M(MatchCharSequence(&it, &it_loc, content.data, end, &token, s, type))
+#define KEYWORD(S, TYPE) M(MatchKeyword(&it, &it_loc, content.data, end, &token, S, sizeof(S) - 1, TYPE))
 
     //M(MatchNewlines(&it, &it_loc, end, &token));
-    M(MatchLineComment(&it, &it_loc, end, &token));
+    M(MatchLineComment(&it, &it_loc, content.data, end, &token));
 
     Seq("[", '[');
     Seq("]", ']');
@@ -463,16 +426,16 @@ Tokens tokenize(Str content, const char *abs_filename, const char *relative_file
     Seq("{", '{');
     Seq("}", '}');
 
-    M(MatchNumber(&it, &it_loc, end, &token));
+    M(MatchNumber(&it, &it_loc, content.data, end, &token));
 
-    M(MatchDirectives(&it, &it_loc, end, &token));
+    M(MatchDirectives(&it, &it_loc, content.data, end, &token));
 
-    M(MatchIdentifierOrKeyword(&it, &it_loc, end, &token));
-    M(MatchStringLiteral(&it, &it_loc, end, &token));
+    M(MatchIdentifierOrKeyword(&it, &it_loc, content.data, end, &token));
+    M(MatchStringLiteral(&it, &it_loc, content.data, end, &token));
     Seq("...", TokenVariadic);
     Seq(".", '.');
     Seq(",", ',');
-    M(MatchEOF(&it, &it_loc, end, &token));
+    M(MatchEOF(&it, &it_loc, content.data, end, &token));
 #undef Seq
 #undef M
 
@@ -548,8 +511,9 @@ void debugPrintTokens(Tokens tokens, FILE *output) {
       type = singleCharType;
     }
     fprintf(output, "type = '%s' value = '", type);
-    for (int i = 0; i < t->value.len; ++i) {
-      auto ch = t->value.data[i];
+    for (int i = 0; i < t->length; ++i) {
+      //auto ch = t->value.data[i];
+      auto ch = tokens.fileContent.data[t->begin + i];
       switch (ch) {
       case '\n': {
         fprintf(output, "\\n");
