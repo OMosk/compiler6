@@ -67,6 +67,8 @@ int main() {
     showCodeLocation(error.site);
     return 1;
   }
+  printf("parsing took %fsec\n", now() - start);
+  printf("memory usage %ld\n", usage(&global));
 
   start = now();
   debugPrintAST(f, stdout, 2, 0, 0);

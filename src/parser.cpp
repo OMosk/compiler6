@@ -52,8 +52,15 @@ ASTNode *parseUnaryExpression(Tokens *tokens, int *outI, Error *error) {
     ASTNode *bottom = NULL;
     switch (TT(i)) {
     case '(': {
+      i++;
       bottom = parseExpression(tokens, &i, error);
       if (!bottom) return NULL;
+      if (TT(i) != ')') {
+        FILL_ERROR("Expected closing ')'");
+        return NULL;
+      }
+      i++;
+      bottom->flags |= FlagsExprInParentheses;
     } break;
     case TokenIdentifier: {
       ASTIdentifier *ident = ASTALLOC(ASTIdentifier, i);
@@ -153,22 +160,51 @@ ASTNode *parseUnaryExpression(Tokens *tokens, int *outI, Error *error) {
 
 ASTNode *parseExpression(Tokens *tokens, int *outI, Error *error) {
   int i = *outI;
-  ASTNode *lhs = NULL;
-  if (TT(i) == '(') {
-    i++;
-    lhs = parseExpression(tokens, &i, error);
-    if (TT(i) != ')') {
-      FILL_ERROR("Expected closing ')' at the end of expression");
-      return NULL;
-    }
-    i++;
-    lhs->flags |= FlagsExprInParentheses;
-  } else {
-    lhs = parseUnaryExpression(tokens, &i, error);
-  }
+  ASTNode *lhs = parseUnaryExpression(tokens, &i, error);
+  if (!lhs) return NULL;
 
   for (bool shouldContinue = true; shouldContinue;) {
     switch (TT(i)) {
+      case '+':
+      case '-':
+      case '*':
+      case '/':
+      case '%':
+
+      case TokenShl:
+      case TokenShr:
+      case TokenLE:
+      case TokenGE:
+      case '<':
+      case '>':
+      case TokenEq:
+      case TokenNEq:
+
+      case '&':
+      case '^':
+      case '|':
+
+      case TokenLogicalAnd:
+      case TokenLogicalOr: {
+        ASTBinaryOp *bop = ASTALLOC(ASTBinaryOp, i);
+        bop->lhs = lhs;
+        bop->op = TT(i);
+        i++;
+        bop->rhs = parseUnaryExpression(tokens, &i, error);
+        if (!bop->rhs) return NULL;
+
+        bool rotated = false;
+        if (lhs->kind == ASTBinaryOp_ && !(lhs->flags & FlagsExprInParentheses)) {
+          ASTBinaryOp *lhsBOp = (ASTBinaryOp *)lhs;
+          if (opPriority(lhsBOp->op) < opPriority(bop->op)) {
+            bop->lhs = lhsBOp->rhs;
+            lhsBOp->rhs = bop;
+            rotated = true;
+          }
+        }
+
+        if (!rotated) lhs = bop;
+      } break;
     default: {
       shouldContinue = false;
     }
@@ -417,6 +453,7 @@ ASTProc *parseProc(Tokens *tokens, int *outI, Error *error) {
       for (int i = startArgumentWithSameType; i < endArgumentWithSameType; ++i) {
         proc->arguments.data[i]->type = type;
       }
+      startArgumentWithSameType = endArgumentWithSameType;
 
       if (TT(i) == ',') {
         ++i;
@@ -508,11 +545,15 @@ void printTree(FILE *out, int width) {
 
 void debugPrintAST(ASTNode *root, FILE *out, int shiftWidth, int currentShift, int firstLineShift) {
   printSpace(out, firstLineShift);
+  fprintf(out, "%s id=%d (%d:%d) ",
+    astTypeToStr(root->kind),
+    root->id,
+    root->site.line, root->site.col);
+
   switch (root->kind) {
   case ASTFile_: {
     ASTFile *file = (ASTFile *) root;
-    fprintf(out, "%s %s\n",
-      astTypeToStr(root->kind),
+    fprintf(out, "%s\n",
       files[file->fileIndex].absolute_path
       );
 
@@ -523,11 +564,7 @@ void debugPrintAST(ASTNode *root, FILE *out, int shiftWidth, int currentShift, i
   } break;
   case ASTProc_: {
     ASTProc *proc = (ASTProc *)root;
-    fprintf(out, "%s %.*s (%d:%d)",
-      astTypeToStr(root->kind),
-      (int)proc->name.len, proc->name.data,
-      proc->site.line, proc->site.col
-      );
+    fprintf(out, "%.*s", (int)proc->name.len, proc->name.data);
 
     if (proc->flags & FlagsProcForeign) {
       fprintf(out, " foreign function");
@@ -560,20 +597,16 @@ void debugPrintAST(ASTNode *root, FILE *out, int shiftWidth, int currentShift, i
   } break;
   case ASTIdentifier_: {
     ASTIdentifier *ident = (ASTIdentifier *)root;
-    fprintf(out, "%s %.*s (%d:%d)\n",
-      astTypeToStr(root->kind),
-      (int)ident->name.len, ident->name.data, ident->site.line, ident->site.col);
+    fprintf(out, "%.*s\n", (int)ident->name.len, ident->name.data);
   } break;
   case ASTPointerTo_: {
     ASTPointerTo *ptr = (ASTPointerTo *)root;
-    fprintf(out, "%s (%d:%d)\n",
-      astTypeToStr(root->kind), root->site.line, root->site.col);
+    fprintf(out, "\n");
     debugPrintAST(ptr->pointsTo, out, shiftWidth, currentShift + 1 * shiftWidth);
   } break;
   case ASTBlock_: {
     ASTBlock *block = (ASTBlock *)root;
-    fprintf(out, "%s (%d:%d)\n",
-      astTypeToStr(root->kind), root->site.line, root->site.col);
+    fprintf(out, "\n");
     for (int i = 0; i < block->statements.len; ++i) {
       ASTNode *stmt = block->statements.data[i];
       printSpace(out, currentShift + shiftWidth);
@@ -583,8 +616,7 @@ void debugPrintAST(ASTNode *root, FILE *out, int shiftWidth, int currentShift, i
   } break;
   case ASTVariableDefinition_: {
     ASTVariableDefinition *varDefn = (ASTVariableDefinition *)root;
-    fprintf(out, "%s (%d:%d)\n",
-      astTypeToStr(root->kind), root->site.line, root->site.col);
+    fprintf(out, "\n");
     for (int i = 0; i < varDefn->vars.len; ++i) {
       ASTVariable *var = varDefn->vars[i];
       printSpace(out, currentShift + shiftWidth);
@@ -594,13 +626,12 @@ void debugPrintAST(ASTNode *root, FILE *out, int shiftWidth, int currentShift, i
   } break;
   case ASTVariable_: {
     ASTVariable *var = (ASTVariable *)root;
-    fprintf(out, "%s '%.*s' (%d:%d)\n",
-      astTypeToStr(root->kind), (int)var->name.len, var->name.data, root->site.line, root->site.col);
+    fprintf(out, "'%.*s'\n", (int)var->name.len, var->name.data);
 
     printSpace(out, currentShift + shiftWidth);
     if (var->type) {
       fprintf(out, "type ");
-      debugPrintAST(var->type, out, shiftWidth, currentShift + 2*shiftWidth, 0);
+      debugPrintAST(var->type, out, shiftWidth, currentShift + 1*shiftWidth, 0);
     } else {
       fprintf(out, "type NULL\n");
     }
@@ -608,7 +639,7 @@ void debugPrintAST(ASTNode *root, FILE *out, int shiftWidth, int currentShift, i
     printSpace(out, currentShift + shiftWidth);
     if (var->initExpr) {
       fprintf(out, "initExpr ");
-      debugPrintAST(var->initExpr, out, shiftWidth, currentShift + 2*shiftWidth, 0);
+      debugPrintAST(var->initExpr, out, shiftWidth, currentShift + 1*shiftWidth, 0);
     } else {
       fprintf(out, "initExpr NULL\n");
     }
@@ -616,18 +647,94 @@ void debugPrintAST(ASTNode *root, FILE *out, int shiftWidth, int currentShift, i
   } break;
   case ASTLiteral_: {
     ASTLiteral *literal = (ASTLiteral *)root;
-    fprintf(out, "%s", astTypeToStr(root->kind));
 
-    if (literal->literalKind & LiteralKindNumber) fprintf(out, " number");
-    if (literal->literalKind & LiteralKindString) fprintf(out, " string");
+    if (literal->literalKind & LiteralKindNumber) fprintf(out, "number");
+    if (literal->literalKind & LiteralKindString) fprintf(out, "string");
 
-    fprintf(out, " '%.*s' (%d:%d)\n",
-      (int)literal->raw.len, literal->raw.data, root->site.line, root->site.col);
+    fprintf(out, " '%.*s'\n",
+      (int)literal->raw.len, literal->raw.data);
+  } break;
+  case ASTBinaryOp_: {
+    ASTBinaryOp *bop = (ASTBinaryOp *)root;
+    //fprintf(out, "%s '%s'", astTypeToStr(root->kind), OpToStr(bop->op));
+    const char *paren = "";
+    if (bop->flags & FlagsExprInParentheses) paren = "()";
+    fprintf(out, "'%s' %s\n", opToStr(bop->op), paren);
 
+    debugPrintAST(bop->lhs, out, shiftWidth, currentShift + 1*shiftWidth);
+    debugPrintAST(bop->rhs, out, shiftWidth, currentShift + 1*shiftWidth);
+  } break;
+  case ASTUnaryOp_: {
+    ASTUnaryOp *uop = (ASTUnaryOp *)root;
+    fprintf(out, "'%s'\n", opToStr(uop->op));
+    debugPrintAST(uop->operand, out, shiftWidth, currentShift + 1*shiftWidth);
   } break;
   default: {
     fprintf(out, "'%s' in debugPrintAST not implemented\n", astTypeToStr(root->kind));
     NOT_IMPLEMENTED;
   }
+  }
+}
+
+const char *opToStr(int op) {
+  switch (op) {
+  #define S(ch, str) case ch: return str;
+  S('+', "+");
+  S('-', "-");
+  S('*', "*");
+  S('/', "/");
+  S('%', "%");
+
+  S('&', "&");
+  S('^', "^");
+  S('|', "|");
+  S('~', "~");
+
+  S('<', "<");
+  S('>', ">");
+  S('!', "!");
+  S(TokenEq, "==");
+  S(TokenNEq, "!=");
+
+  S(TokenShl, "<<");
+  S(TokenShr, ">>");
+  S(TokenLE, "<=");
+  S(TokenGE, ">=");
+  S(TokenLogicalAnd, "&&");
+  S(TokenLogicalOr, "||");
+  #undef S
+  default: NOT_IMPLEMENTED;
+  }
+}
+
+int opPriority(int op) {
+  switch (op) {
+  case TokenLogicalOr: return -7;
+  case TokenLogicalAnd: return -6;
+
+  case '|': return -5;
+  case '^': return -4;
+  case '&': return -3;
+
+  case TokenEq: return -2;
+  case TokenNEq: return -2;
+
+  case TokenLE: return -1;
+  case TokenGE: return -1;
+  case '<':  return -1;
+  case '>':  return -1;
+
+  case TokenShl: return 0;
+  case TokenShr: return 0;
+
+  case '+': return 1;
+  case '-': return 1;
+
+  case '*': return 2;
+  case '/': return 2;
+  case '%': return 2;
+  default:
+    printf("%s:%d:%s unexpected op: %d\n", __FILE__, __LINE__, __func__, op);
+    abort();
   }
 }

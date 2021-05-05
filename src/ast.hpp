@@ -159,4 +159,9 @@ struct ASTSubscript: ASTNode {
   ASTNode *index;
 };
 
+struct ASTBinaryOp: ASTNode {
+  ASTNode *lhs, *rhs;
+  int16_t op;
+};
+
 const char *astTypeToStr(int kind);

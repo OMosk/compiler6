@@ -14,3 +14,6 @@ void debugPrintAST(ASTNode *root, FILE *out, int shiftWidth, int currentShift) {
 }
 
 ASTFile *parseFile(Tokens tokens, Error *error);
+
+const char *opToStr(int op);
+int opPriority(int op);
