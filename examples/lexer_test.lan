@@ -12,6 +12,8 @@ function main (argc i32, argv **i8) i32 {
   var z2 f64 = (3 + 4) * 5;
   var z3 f64 = 1/2/3/4/5;
   var z4 f64 = 1/2/3/(4+6)/5;
+  //var z6, z7 f64 = 0;
+  //var z5 f64 = 0, 0;
   //printf("main() works %f\n".addr, (420.0 * 1.5).(f64));
   //i := 0;
   //printf("arguments started\n".addr);

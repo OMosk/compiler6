@@ -71,7 +71,11 @@ int main() {
   printf("memory usage %ld\n", usage(&global));
 
   start = now();
-  debugPrintAST(f, stdout, 2, 0, 0);
+  {
+    auto file = fopen("ast.out", "w");
+    debugPrintAST(f, file, 2, 0, 0);
+    fclose(file);
+  }
   printf("debugPrintAST took %fsec\n", now() - start);
 
   /*{

@@ -324,8 +324,6 @@ ASTVariableDefinition *parseLongVariableDifinition(
     i++;
 
     for (int varNo = 0; varNo < expectVars; ++varNo) {
-      //TODO: continue here
-      //parsing init expressions for long variables defn
       ASTNode *initExpr = parseExpression(tokens, &i, error);
       if (!initExpr) {
         FILL_ERROR("Expected initializer expression");
@@ -338,7 +336,8 @@ ASTVariableDefinition *parseLongVariableDifinition(
         if (varNo == expectVars - 1) {
           //It's ok, that was the last one
         } else {
-          FILL_ERROR("Expected ',' between variable initialization expressions");
+          //FILL_ERROR("Expected ',' between variable initialization expressions");
+          FILL_ERROR("Too few variable initialization expressions");
           return NULL;
         }
       }
