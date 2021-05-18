@@ -8,19 +8,19 @@ namespace parser {
 #define TT(I) ((tokens->arr.data + (I))->tokenType)
 #define TStr(I) (Str{.data = tokens->fileContent.data + T(I)->begin, .len = T(I)->length})
 
-void fillError(Error *error, int fileIndex, Token *t, int tokenIndex, Str message) {
+void fillError(Error *error, int fileIndex, Token *t, Str message) {
   error->site.file = fileIndex;
   error->site.col = t->col;
   error->site.line = t->line;
-  error->tokenIndex = tokenIndex;
   error->message = message;
 }
 
-#define FILL_ERROR(MSG) fillError(error, tokens->fileIndex, T(i), i, STR(MSG))
+#define FILL_ERROR(MSG) fillError(error, tokens->fileIndex, T(i), STR(MSG))
 #define SITE(I) Site{.line = T(I)->line, .col = T(I)->col, .file = (uint16_t)tokens->fileIndex}
 
 ASTNode *parseExpression(Tokens *tokens, int *outI, Error *error);
 ASTNode *parseType(Tokens *tokens, int *outI, Error *error);
+ASTBlock *parseBlock(Tokens *tokens, int *outI, Error *error);
 
 ASTNode *parseUnaryExpression(Tokens *tokens, int *outI, Error *error) {
   int i = *outI;
@@ -142,7 +142,17 @@ ASTNode *parseUnaryExpression(Tokens *tokens, int *outI, Error *error) {
       } break;
       case '(': {
         //call
-        NOT_IMPLEMENTED;
+        ASTCall *call = ASTALLOC(ASTCall, i);
+        call->callee = bottom;
+        i++;
+        while (TT(i) != ')') {
+          ASTNode *arg = parseUnaryExpression(tokens, &i, error);
+          if (!arg) return NULL;
+          append(&call->args, arg);
+          if (TT(i) == ',') i++;
+        }
+        i++;
+        bottom = call;
       } break;
       default: {
         shouldContinue = false;
@@ -362,8 +372,151 @@ ASTNode *parseStatement(Tokens *tokens, int *outI, Error *error) {
   case TokenVar: {
     result = parseLongVariableDifinition(tokens, &i, error);
   } break;
+  case '{': {
+    result = parseBlock(tokens, &i, error);
+  } break;
+  case TokenIf: {
+    ASTIf *if_ = ASTALLOC(ASTIf, i);
+    i++;
+    if (TT(i) != '(') {
+      FILL_ERROR("Expected opening '(' in if statement");
+      return NULL;
+    }
+    i++;
+    if_->cond = parseExpression(tokens, &i, error);
+    if (!if_->cond) return NULL;
+
+    if (TT(i) != ')') {
+      FILL_ERROR("Expected closing ')' in if statement");
+      return NULL;
+    }
+    i++;
+
+    if_->thenStmt = parseStatement(tokens, &i, error);
+    if (!if_->thenStmt) return NULL;
+    if (TT(i) == TokenElse) {
+      i++;
+      if_->elseStmt = parseStatement(tokens, &i, error);
+      if (!if_->elseStmt) return NULL;
+    }
+    result = if_;
+  } break;
+  case TokenDefer: {
+    ASTDefer *defer = ASTALLOC(ASTDefer, i);
+    i++;
+    defer->stmt = parseStatement(tokens, &i, error);
+    if (!defer->stmt) return NULL;
+    result = defer;
+  } break;
+  case TokenWhile: {
+    ASTWhile *loop = ASTALLOC(ASTWhile, i);
+    i++;
+    if (TT(i) != '(') {
+      FILL_ERROR("Expected opening ( in while loop condition");
+      return NULL;
+    }
+    i++;
+    loop->cond = parseExpression(tokens, &i, error);
+    if (!loop->cond) return NULL;
+
+    if (TT(i) != ')') {
+      FILL_ERROR("Expected closing ) in while loop condition");
+      return NULL;
+    }
+    i++;
+
+    loop->body = parseStatement(tokens, &i, error);
+    if (!loop->body) return NULL;
+
+    result = loop;
+  } break;
   default: {
-    NOT_IMPLEMENTED;
+    ASTNode *expr = parseExpression(tokens, &i, error);
+    if (!expr) return NULL;
+
+    if (TT(i) == ';') {
+      i++;
+      result = expr;
+    } else {
+      Array<ASTNode*> lhs = {};
+      append(&lhs, expr);
+
+      do {
+        if (TT(i) == ',') {
+          i++;
+          auto expr = parseExpression(tokens, &i, error);
+          if (!expr) return NULL;
+          append(&lhs, expr);
+        } else {
+          break;
+        }
+      } while (true);
+
+      auto token = T(i);
+      switch (token->tokenType) {
+      case '=':
+      case TokenDefine: {
+        i++;
+        Array<ASTNode *> rhs = {};
+        do {
+          auto expr = parseExpression(tokens, &i, error);
+          if (!expr) return NULL;
+          append(&rhs, expr);
+          if (TT(i) == ',') {
+            i++;
+          } else {
+            break;
+          }
+        } while (true);
+
+        if (TT(i) == ';') {
+          i++;
+        } else {
+          FILL_ERROR("Expected ';'");
+          return NULL;
+        }
+
+        if (lhs.len != rhs.len) {
+          FILL_ERROR("Number of expressions on the left and the right does not match");
+          return NULL;
+        }
+
+        if (token->tokenType == '=') {
+          ASTAssignment *assignment = ASTALLOC(ASTAssignment, i);
+          assignment->lhs = lhs;
+          assignment->rhs = rhs;
+          result = assignment;
+        } else if (token->tokenType == TokenDefine) {
+          ASTVariableDefinition *vardefn = ASTALLOC(ASTVariableDefinition, i);
+          resize(&vardefn->vars, lhs.len);
+          for (int varNo = 0; varNo < lhs.len; ++varNo) {
+            ASTVariable *var = ASTALLOC2(ASTVariable, lhs[varNo]->site);
+            if (lhs[varNo]->kind != ASTIdentifier_) {
+              error->site = lhs[varNo]->site;
+              error->message = STR("Variable definition should only have identifiers");
+              return NULL;
+            }
+            var->name = ((ASTIdentifier *)lhs[varNo])->name;
+            var->initExpr = rhs[varNo];
+            vardefn->vars[varNo] = var;
+          }
+          result = vardefn;
+        } else {
+          NOT_IMPLEMENTED;
+        }
+      } break;
+
+      //Should we allow: a(), b(), c();
+      //case ';': {
+      //} break;
+
+      default: {
+        FILL_ERROR("Unexpected token in statement");
+        return NULL;
+      } break;
+
+      }
+    }
   }
   }
   *outI = i;
@@ -669,8 +822,55 @@ void debugPrintAST(ASTNode *root, FILE *out, int shiftWidth, int currentShift, i
     fprintf(out, "'%s'\n", opToStr(uop->op));
     debugPrintAST(uop->operand, out, shiftWidth, currentShift + 1*shiftWidth);
   } break;
+  case ASTCall_: {
+    ASTCall *call = (ASTCall *)root;
+    fprintf(out, "\n");
+    printSpace(out, currentShift + shiftWidth);
+    fprintf(out, "callee ");
+    debugPrintAST(call->callee, out, shiftWidth, currentShift + 1*shiftWidth, 0);
+    for (int i = 0; i < call->args.len; ++i) {
+      printSpace(out, currentShift + shiftWidth);
+      fprintf(out, "arg[%d] ", i);
+      debugPrintAST(call->args[i], out, shiftWidth, currentShift + 1*shiftWidth, 0);
+    }
+  } break;
+  case ASTIf_: {
+    ASTIf *if_ = (ASTIf *)root;
+    fprintf(out, "\n");
+    printSpace(out, currentShift + shiftWidth);
+    fprintf(out, "cond ");
+    debugPrintAST(if_->cond, out, shiftWidth, currentShift + 1*shiftWidth, 0);
+
+    printSpace(out, currentShift + shiftWidth);
+    fprintf(out, "then ");
+    debugPrintAST(if_->thenStmt, out, shiftWidth, currentShift + 1*shiftWidth, 0);
+
+    if (if_->elseStmt) {
+      printSpace(out, currentShift + shiftWidth);
+      fprintf(out, "else ");
+      debugPrintAST(if_->elseStmt, out, shiftWidth, currentShift + 1*shiftWidth, 0);
+    }
+  } break;
+  case ASTDefer_: {
+    ASTDefer *defer = (ASTDefer *)root;
+    fprintf(out, " ");
+    debugPrintAST(defer->stmt, out, shiftWidth, currentShift, 0);
+  } break;
+  case ASTWhile_: {
+    ASTWhile *loop = (ASTWhile *)root;
+    fprintf(out, "\n");
+    printSpace(out, currentShift + shiftWidth);
+    fprintf(out, "cond ");
+    debugPrintAST(loop->cond, out, shiftWidth, currentShift + 1*shiftWidth, 0);
+
+    printSpace(out, currentShift + shiftWidth);
+    fprintf(out, "body ");
+    debugPrintAST(loop->body, out, shiftWidth, currentShift + 1*shiftWidth, 0);
+
+  } break;
   default: {
-    fprintf(out, "'%s' in debugPrintAST not implemented\n", astTypeToStr(root->kind));
+    //fprintf(out, "\n\n'%s' in debugPrintAST not implemented\n", astTypeToStr(root->kind));
+    printf("\n\n'%s' in debugPrintAST not implemented\n\n\n", astTypeToStr(root->kind));
     NOT_IMPLEMENTED;
   }
   }

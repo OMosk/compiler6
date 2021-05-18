@@ -5,7 +5,7 @@
 struct Error {
   Site site;
   Str message;
-  int tokenIndex;
+  //int tokenIndex;
 };
 
 void debugPrintAST(ASTNode *root, FILE *out, int shiftWidth, int currentShift, int firstLineShift);

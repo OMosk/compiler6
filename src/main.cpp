@@ -50,8 +50,8 @@ int main() {
   }
   printf("tokenize took %fsec\n", now() - start);
   printf("memory usage %ld\n", usage(&global));
-  start = now();
 
+  start = now();
   {
     auto f = fopen("tokens.out", "w");
     debugPrintTokens(tokens, f);
@@ -59,6 +59,7 @@ int main() {
   }
   printf("debugPrintTokens took %fsec\n", now() - start);
 
+  start = now();
   Error error = {};
   auto f = parseFile(tokens, &error);
   if (!f) {

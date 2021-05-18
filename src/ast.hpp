@@ -80,6 +80,9 @@ inline ASTNode * init(void *memory, size_t size, int kind, Site site) {
 #define ASTALLOC(NODE, I) \
   ((NODE *) init(ALLOC(NODE), sizeof(NODE), NODE ## _, SITE(I)))
 
+#define ASTALLOC2(NODE, site) \
+  ((NODE *) init(ALLOC(NODE), sizeof(NODE), NODE ## _, site))
+
 struct ASTIdentifier: ASTNode {
   Str name;
 };
@@ -162,6 +165,29 @@ struct ASTSubscript: ASTNode {
 struct ASTBinaryOp: ASTNode {
   ASTNode *lhs, *rhs;
   int16_t op;
+};
+
+struct ASTCall: ASTNode {
+  ASTNode *callee;
+  Array<ASTNode *> args;
+};
+
+struct ASTIf: ASTNode {
+  ASTNode *cond, *thenStmt, *elseStmt;
+};
+
+struct ASTAssignment: ASTNode {
+  Array<ASTNode *> lhs;
+  Array<ASTNode *> rhs;
+};
+
+struct ASTDefer: ASTNode {
+  ASTNode *stmt;
+};
+
+struct ASTWhile: ASTNode {
+  ASTNode *cond;
+  ASTNode *body;
 };
 
 const char *astTypeToStr(int kind);
