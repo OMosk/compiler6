@@ -1,6 +1,8 @@
 #include "utils.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
+#include "ir.hpp"
+#include "irrunner.hpp"
 
 #include <unistd.h>
 
@@ -10,6 +12,7 @@
 #include <errno.h>
 #include <sys/mman.h>
 #endif
+#include <dlfcn.h>
 
 int main() {
   initClock();
@@ -78,6 +81,128 @@ int main() {
     fclose(file);
   }
   printf("debugPrintAST took %fsec\n", now() - start);
+
+  ir::Hub hub = {};
+  ir::Builder builder = {};
+  ir::Builder *b = &builder;
+  b->h = &hub;
+
+  {
+    ir::Function *fn = b->function(STR("empty_fn"));
+    b->jump(fn->init, fn->exit);
+    b->retVoid(fn->exit);
+  }
+
+  ir::Function *add = NULL;
+  {
+    Array<Type*> args = {};
+    append(&args, i32);
+    append(&args, i32);
+    add = b->function(STR("add"), args, i32);
+    ir::BasicBlock *main = b->block(add, "main");
+    b->jump(add->init, main);
+
+    uint32_t result = b->iadd(main, add, 0, 1);
+    b->jump(main, add->exit);
+
+    b->ret(add->exit, result);
+
+    #if 1
+    double start = now();
+    Array<Value> argValues = {};
+    append(&argValues, Value{.i32 = 1});
+    append(&argValues, Value{.i32 = 2});
+    Value resultValue = runIR(add, argValues);
+    ASSERT(resultValue.i32 == 3, "Wrong result");
+    double end = now();
+
+    printf("Result is %d (elapsed %f sec)\n", resultValue.i32, end-start);
+    #endif
+  }
+
+  ir::Function *add3 = NULL;
+  {
+    Array<Type*> args = {};
+    append(&args, i32);
+    append(&args, i32);
+    append(&args, i32);
+    add3 = b->function(STR("add3"), args, i32);
+    ir::BasicBlock *main = b->block(add3, "main");
+    b->jump(add3->init, main);
+
+    Array<uint32_t> argValues = {};
+    append(&argValues, 0u);
+    append(&argValues, 1u);
+
+    //b->setArg(main, 0, 0);
+    //b->setArg(main, 1, 1);
+    uint32_t sum1 = b->call(main, add3, add, argValues);
+    argValues = {};
+    append(&argValues, sum1);
+    append(&argValues, 2u);
+    //b->setArg(main, 0, sum1);
+    //b->setArg(main, 1, 2);
+    uint32_t sum2 = b->call(main, add3, add, argValues);
+
+    b->jump(main, add3->exit);
+
+    b->ret(add3->exit, sum2);
+
+    #if 1
+    {
+      double start = now();
+      Array<Value> argValues = {};
+      append(&argValues, Value{.i32 = 1});
+      append(&argValues, Value{.i32 = 2});
+      append(&argValues, Value{.i32 = 3});
+      Value resultValue = runIR(add3, argValues);
+      ASSERT(resultValue.i32 == 6, "Wrong result");
+      double end = now();
+
+      printf("Result is %d (elapsed %f sec)\n", resultValue.i32, end-start);
+    }
+    #endif
+  }
+
+  ir::Function *fnThatUsesPrintf = NULL;
+  {
+    ir::Function *irPrintf = NULL;
+    Array<Type*> args = {};
+    append(&args, u64);
+    irPrintf = b->foreignFunction(STR("printf"), STR("libc"), args, i32, true);
+
+    fnThatUsesPrintf = b->function(STR("fnThatUsesPrintf"), args, i32);
+    {
+      Array<uint32_t> argValues = {};
+      append(&argValues, 0u);
+      uint32_t retValue = b->call(fnThatUsesPrintf->init, fnThatUsesPrintf, irPrintf, argValues);
+      b->jump(fnThatUsesPrintf->init, fnThatUsesPrintf->exit);
+      b->ret(fnThatUsesPrintf->exit, retValue);
+    }
+
+  }
+
+  ir::printAll(&hub, stdout);
+
+  void *fptr = dlsym(RTLD_DEFAULT, "printf");
+  printf("dlsym=%p native=%p\n", fptr, printf);
+
+  {
+    printf("before irPrintf\n");
+    Array<Value> argValues = {};
+    append(&argValues, Value{.u64 = (uint64_t)(const char *)"Hello world\n"});
+    Value result = runIR(fnThatUsesPrintf, argValues);
+    printf("after irPrintf n = %d\n", result.i32);
+  }
+
+  {
+    printf("before irPrintf\n");
+    Array<Value> argValues = {};
+    append(&argValues, Value{.u64 = (uint64_t)(const char *)"Hello world\n"});
+    Value result = runIR(fnThatUsesPrintf, argValues);
+    printf("after irPrintf n = %d\n", result.i32);
+  }
+
 
   /*{
     auto start = now();

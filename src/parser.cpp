@@ -669,6 +669,23 @@ ASTFile *parseFile(Tokens *tokens, Error *error) {
       node = fn;
     } break;
 
+    case TokenLoad: {
+      ASTLoad *load = ASTALLOC(ASTLoad, i);
+      i++;
+      if (TT(i) != TokenStringLiteral) {
+        FILL_ERROR("Expected string literal with filename to load");
+        return NULL;
+      }
+      load->filename = TStr(i);
+      i++;
+      if (TT(i) != ';') {
+        FILL_ERROR("Expected ';'");
+        return NULL;
+      }
+      i++;
+      node = load;
+    } break;
+
     default: {
       FILL_ERROR("Unexpected top-level declaration");
     } break;
@@ -867,6 +884,10 @@ void debugPrintAST(ASTNode *root, FILE *out, int shiftWidth, int currentShift, i
     fprintf(out, "body ");
     debugPrintAST(loop->body, out, shiftWidth, currentShift + 1*shiftWidth, 0);
 
+  } break;
+  case ASTLoad_: {
+    ASTLoad *load = (ASTLoad *)root;
+    fprintf(out, "filename = '%.*s'\n", (int)load->filename.len, load->filename.data);
   } break;
   default: {
     //fprintf(out, "\n\n'%s' in debugPrintAST not implemented\n", astTypeToStr(root->kind));

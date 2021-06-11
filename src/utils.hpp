@@ -24,8 +24,8 @@ extern Allocator global;
 
 void initAllocator(Allocator *a, char *start, int64_t size);
 
-void *alloc(size_t size, size_t alignment, int n = 1);
-void *realloc(void *oldData, size_t size, size_t alignment, size_t oldLength, size_t newCap);
+void *alloc(size_t size, size_t alignment, int n = 1, Allocator *allocator = &global);
+void *realloc(void *oldData, size_t size, size_t alignment, size_t oldLength, size_t newCap, Allocator *allocator = &global);
 size_t usage(Allocator *a);
 
 #define ALLOC(TYPE) ((TYPE *)alloc(sizeof(TYPE), alignof(TYPE)))
@@ -62,20 +62,30 @@ struct Array {
 
 template<typename T>
 void reserve(Array<T> *arr, uint32_t newCap) {
+  Allocator *allocator = &global;
+
   if (newCap > arr->cap) {
-    arr->data = (T *)realloc(arr->data, sizeof(T), alignof(T), arr->len, newCap);
+    arr->data = (T *)realloc(arr->data, sizeof(T), alignof(T), arr->len, newCap, allocator);
     arr->cap = newCap;
   }
 }
+
 template<typename T>
 void resize(Array<T> *arr, uint32_t size) {
-  reserve(arr, size);
+  reserve(arr, (arr->cap * 2 > size ? arr->cap * 2 : size));
   arr->len = size;
 }
 
 template<typename T>
+void ensureAtLeast(Array<T> *arr, uint32_t size) {
+  if (arr->len < size) {
+    resize(arr, size);
+  }
+}
+
+template<typename T>
 void append(Array<T> *arr, T item) {
-  if (arr->len == 0) {
+  if (arr->cap == 0) {
     reserve(arr, 8);
   }
   if (arr->len == arr->cap) {
@@ -108,6 +118,85 @@ void append(StaticArray<T, N> *arr, T item) {
   arr->len++;
 }
 
+template<typename T, int BUCKET_SIZE>
+struct BucketedArray {
+  struct Bucket {
+    Bucket *next;
+    T items[BUCKET_SIZE];
+  };
+
+  struct Iterator {
+    BucketedArray<T, BUCKET_SIZE> *array;
+    Bucket *bucket;
+    int i;
+
+    T *value() {
+      return bucket->items + i;
+    }
+
+    T *next() {
+      T* result = value();
+
+      if (bucket->next == NULL) {
+        if (i < array->lastBucketSize) {
+          i++;
+        } else {
+          return NULL;
+        }
+      } else {
+        if (i < BUCKET_SIZE) {
+          i++;
+        } else {
+          bucket = bucket->next;
+          i = 0;
+        }
+      }
+      return result;
+    }
+  };
+
+  Bucket first;
+  Bucket *last;
+  int lastBucketSize;
+};
+
+template<typename T, int BUCKET_SIZE>
+T* alloc_back(BucketedArray<T, BUCKET_SIZE> *array) {
+  if (array->last == NULL) {
+    array->last = &array->first;
+  }
+  if (array->lastBucketSize == BUCKET_SIZE) {
+    //WTF?
+    typename BucketedArray<T, BUCKET_SIZE>::Bucket *newBucket =
+      (typename BucketedArray<T, BUCKET_SIZE>::Bucket *)alloc(
+        sizeof(typename BucketedArray<T, BUCKET_SIZE>::Bucket),
+        alignof(typename BucketedArray<T, BUCKET_SIZE>::Bucket),
+        1);
+    *newBucket = {};
+    array->last->next = newBucket;
+    array->last = newBucket;
+    array->lastBucketSize = 0;
+  }
+
+  T *result = array->last->items + array->lastBucketSize++;
+  return result;
+}
+
+template<typename T, int BUCKET_SIZE>
+int bucket_size(BucketedArray<T, BUCKET_SIZE> *array) {
+  return BUCKET_SIZE;
+}
+
+template<typename T, int BUCKET_SIZE>
+typename BucketedArray<T, BUCKET_SIZE>::Iterator iterator(BucketedArray<T, BUCKET_SIZE> *array) {
+  typename BucketedArray<T, BUCKET_SIZE>::Iterator result;
+  result.array = array;
+  result.bucket = &array->first;
+  result.i = 0;
+  return result;
+}
+
+
 struct FileReadResult {
   Str content;
   bool ok;
@@ -139,4 +228,17 @@ void showError(Site loc, const char *fmt, ...);
 void showError(int file_index, int line, int col, const char *fmt, ...);
 void showCodeLocation(Site loc, bool showUnderline = false);
 
+//TODO: create hash table for string values
+/*
+unsigned long
+hash(unsigned char *str)
+{
+    unsigned long hash = 5381;
+    int c;
 
+    while (c = *str++)
+        hash = ((hash << 5) + hash) + c;// hash * 33 + c
+
+    return hash;
+}
+*/

@@ -10,25 +10,25 @@ void initAllocator(Allocator *a, char *start, int64_t size) {
 }
 
 
-void *alloc(size_t size, size_t alignment, int n) {
+void *alloc(size_t size, size_t alignment, int n, Allocator *allocator) {
   if (n == 0) return NULL;
   auto s = size;
   auto a = alignment;
-  auto shift = a - (intptr_t)global.current % a;
+  auto shift = a - (intptr_t)allocator->current % a;
   if (shift == a) shift = 0;
-  auto result = global.current + shift;
+  auto result = allocator->current + shift;
   if ((intptr_t)result % a != 0) {
     abort();
   }
-  global.current += shift + s * n;
-  if (global.current >= global.end) abort();
-  global.allocations++;
+  allocator->current += shift + s * n;
+  if (allocator->current >= allocator->end) abort();
+  allocator->allocations++;
   return result;
 }
 
 
-void *realloc(void *oldData, size_t size, size_t alignment, size_t oldLength, size_t newCap) {
-  auto newData = alloc(size, alignment, newCap);
+void *realloc(void *oldData, size_t size, size_t alignment, size_t oldLength, size_t newCap, Allocator *allocator) {
+  auto newData = alloc(size, alignment, newCap, allocator);
   memcpy(newData, oldData, oldLength * size);
   return newData;
 }
@@ -167,7 +167,7 @@ void showCodeLocation(Site loc, bool showUnderline) {
   int locStrLen = printf("%s:%d:%d", entry.relative_path, loc.line, loc.col);
   printf("|%.*s\n", (int)currentLine.len, currentLine.data);
 
-  //Rework showUnderline
+  //TODO: Rework showUnderline
   /*
   if (showUnderline) {
     for (int i = 0; i < locStrLen; ++i) {

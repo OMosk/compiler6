@@ -63,9 +63,9 @@ enum {
 
 struct ASTNode {
   uint32_t id;
-  uint32_t flags;
+  uint16_t kind;
+  uint16_t flags;
   Site site;
-  uint32_t kind;
 };
 
 inline ASTNode * init(void *memory, size_t size, int kind, Site site) {
@@ -188,6 +188,10 @@ struct ASTDefer: ASTNode {
 struct ASTWhile: ASTNode {
   ASTNode *cond;
   ASTNode *body;
+};
+
+struct ASTLoad: ASTNode {
+  Str filename;
 };
 
 const char *astTypeToStr(int kind);
