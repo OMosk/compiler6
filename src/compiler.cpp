@@ -26,3 +26,26 @@ Names builtin;
 void initBuiltinTypes() {
   //registerName(&builtin, STR("u8"), )
 }
+
+Array<Type *> pointeeTypes;
+Array<Type *> pointerTypes;
+
+Type *getPointerToType(Type *pointee) {
+  //TODO: concurrency
+  for (int i = 0; i < pointeeTypes.len; ++i) {
+    if (pointeeTypes[i] == pointee) {
+      return pointerTypes[i];
+    }
+  }
+
+  Type *result = ALLOC(Type);
+
+  *result = {};
+  result->flags = TYPE_PRIMITIVE | TYPE_FLAG_POINTER;
+  result->size = 8;
+  result->alignment = 8;
+  result->pointerToType = pointee;
+  append(&pointeeTypes, pointee);
+  append(&pointerTypes, result);
+  return result;
+}

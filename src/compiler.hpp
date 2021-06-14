@@ -28,12 +28,15 @@ enum {
   TYPE_FLAG_INT            = (1 << 1),
   TYPE_FLAG_UNSIGNED       = (1 << 2),
   TYPE_FLAG_FLOATING_POINT = (1 << 3),
+  TYPE_FLAG_POINTER        = (1 << 4),
 };
 
 struct Type {
   uint32_t flags;
   uint16_t size; //bytes
   uint16_t alignment; //bytes
+
+  Type *pointerToType;
 };
 
 extern Type *i8;
@@ -48,3 +51,5 @@ extern Type *u64;
 
 extern Type *f32;
 extern Type *f64;
+
+Type *getPointerToType(Type *pointee);

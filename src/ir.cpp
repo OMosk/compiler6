@@ -1,30 +1,107 @@
 #include "ir.hpp"
+#include "compiler.hpp"
 
-namespace ir {
+IRFunction *createIRFunction(IRHub *h, Str name, Array<Type *> args, Type *retType) {
+  IRFunction *fn = (IRFunction *)alloc(sizeof(IRFunction), alignof(IRFunction), 1);
+  *fn = {};
+  fn->init = createIRBlock(fn, "init");
+  fn->exit = createIRBlock(fn, "exit");
 
-void Builder::jump(BasicBlock *bb, BasicBlock *to) {
-  Instruction *jump = this->terminator(bb, INSTRUCTION_JUMP);
+  fn->name = name;
+
+  fn->argsNumber = args.len;
+  #if 0
+  for (int i = 0; i < args.len; ++i) {
+    Value *value = alloc_back(&fn->values);
+    value->type = args[i];
+    value->idx = i;
+    fn->valuesNumber++;
+  }
+  #else
+  resize(&fn->values, args.len);
+  for (int i = 0; i < args.len; ++i) {
+    IRValueInfo value = {};
+    value.type = args[i];
+    fn->values[i] = value;
+    fn->valuesNumber++;
+  }
+  #endif
+  fn->retType = retType;
+
+  //TODO: Concurrency:
+  append(&h->functions, fn);
+
+  return fn;
+}
+
+IRFunction *createIRForeignFunction(IRHub *h, Str name, Str library, Array<Type *> args, Type *retType, bool variadic) {
+  IRFunction *fn = createIRFunction(h, name, args, retType);
+  fn->flags = FUNCTION_FLAG_EXTERNAL;
+  fn->library = library;
+  fn->symbolName = name;
+  if (variadic) fn->flags |= FUNCTION_FLAG_VARIADIC;
+  return fn;
+}
+
+IRBasicBlock *createIRBlock(IRFunction *fn, const char *name) {
+  IRBasicBlock *result = alloc_back(&fn->basicBlocks);
+  *result = {};
+  result->fn = fn;
+
+  //TODO: ifdef this out in optimized build
+  result->name = SPrintf("%s_%d", name, fn->blockNameCounter++).data;
+
+  return result;
+}
+
+IRInstruction *createIRInstruction(IRBasicBlock *bb, uint16_t type) {
+  if (bb->terminator.type) {
+    ASSERT(false, "Attempting to insert instruction into block that already has terminator");
+  }
+
+  IRInstruction *inst = alloc_back(&bb->instructions);
+
+  inst->type = type;
+  return inst;
+}
+
+IRInstruction *createIRTerminatorInstruction(IRBasicBlock *bb, uint16_t type) {
+  if (bb->terminator.type) {
+    ASSERT(false, "Attempting to insert instruction into block that already has terminator");
+  }
+  IRInstruction *inst = &bb->terminator;
+  inst->type = type;
+  return inst;
+}
+
+uint32_t createIRValue(IRFunction *fn) {
+  append(&fn->values, {});
+  return fn->valuesNumber++;
+}
+
+void irInstJump(IRBasicBlock *bb, IRBasicBlock *to) {
+  IRInstruction *jump = createIRTerminatorInstruction(bb, INSTRUCTION_JUMP);
   jump->jump.block = to;
 }
 
-void Builder::retVoid(BasicBlock *bb) {
-  Instruction *ret = this->terminator(bb, INSTRUCTION_RET_VOID);
+void irInstRetVoid(IRBasicBlock *bb) {
+  IRInstruction *ret = createIRTerminatorInstruction(bb, INSTRUCTION_RET_VOID);
 }
 
 
-void Builder::ret(BasicBlock *bb, uint32_t op1) {
-  Instruction *ret = this->terminator(bb, INSTRUCTION_RET);
+void irInstRet(IRBasicBlock *bb, uint32_t op1) {
+  IRInstruction *ret = createIRTerminatorInstruction(bb, INSTRUCTION_RET);
   ret->retValue = op1;
 }
 
-uint32_t Builder::iadd(BasicBlock *bb, Function *fn, uint32_t op1, uint32_t op2) {
-  Instruction *add = this->instruction(bb, INSTRUCTION_IADD);
+uint32_t irInstIAdd(IRBasicBlock *bb, uint32_t op1, uint32_t op2) {
+  IRInstruction *add = createIRInstruction(bb, INSTRUCTION_IADD);
 
-  ASSERT(fn->values[op1].type == fn->values[op2].type, "Mismatched types");
+  ASSERT(bb->fn->values[op1].type == bb->fn->values[op2].type, "Mismatched types");
   add->binaryOp.op1 = op1;
   add->binaryOp.op2 = op2;
-  add->binaryOp.ret = this->value(fn);
-  fn->values[add->binaryOp.ret].type = fn->values[op1].type;
+  add->binaryOp.ret = createIRValue(bb->fn);
+  bb->fn->values[add->binaryOp.ret].type = bb->fn->values[op1].type;
   return add->binaryOp.ret;
 }
 
@@ -34,13 +111,34 @@ uint32_t Builder::iadd(BasicBlock *bb, Function *fn, uint32_t op1, uint32_t op2)
 //  i->setArg.op = op;
 //}
 
-uint32_t Builder::call(BasicBlock *bb, Function *caller, Function *callee, Array<uint32_t> args) {
-  Instruction *call = this->instruction(bb, INSTRUCTION_CALL);
+uint32_t irInstCall(IRBasicBlock *bb, IRFunction *callee, Array<uint32_t> args) {
+  IRInstruction *call = createIRInstruction(bb, INSTRUCTION_CALL);
   call->call.fn = callee;
-  call->call.ret = this->value(caller);
+  call->call.ret = createIRValue(bb->fn);
   call->call.args = args;
-  caller->values[call->call.ret].type = callee->retType;
+  bb->fn->values[call->call.ret].type = callee->retType;
   return call->call.ret;
+}
+
+uint32_t irInstConstant(IRBasicBlock *bb, Type *type, IRValue v) {
+  uint32_t result = createIRValue(bb->fn);
+  bb->fn->values[result].type = type;
+  IRInstruction *constant = createIRInstruction(bb, INSTRUCTION_CONSTANT);
+  constant->constantInit.constant = v;
+  constant->constantInit.valueIndex = result;
+
+  return result;
+}
+
+
+uint32_t irInstAlloca(IRBasicBlock *bb, Type *type) {
+  uint32_t result = createIRValue(bb->fn);
+  bb->fn->values[result].type = getPointerToType(type);
+  IRInstruction *alloca = createIRInstruction(bb, INSTRUCTION_ALLOCA);
+  alloca->alloca.type = type;
+  alloca->alloca.valueIndex = result;
+
+  return result;
 }
 
 const char *instructionTypeToString(int type) {
@@ -53,7 +151,7 @@ const char *instructionTypeToString(int type) {
 }
 
 
-void printInstruction(Function *fn, Instruction *instruction, FILE *f) {
+void printInstruction(IRFunction *fn, IRInstruction *instruction, FILE *f) {
   fprintf(f, "\t%8p: %3d", instruction, instruction->type);
   switch (instruction->type) {
     case INSTRUCTION_JUMP: {
@@ -85,6 +183,37 @@ void printInstruction(Function *fn, Instruction *instruction, FILE *f) {
       }
       fprintf(f, ")\n");
     } break;
+
+    case INSTRUCTION_CONSTANT: {
+      Type *type = fn->values[instruction->constantInit.valueIndex].type;
+      IRValue value = instruction->constantInit.constant;
+      fprintf(f, " ");
+      printType(type, f);
+      fprintf(f, " v%u = constant %p", instruction->constantInit.valueIndex, instruction->constantInit.constant.ptr);
+      #define S(TYPE, FORMAT_SPECIFIER, FIELD) do { if (type == FIELD) { fprintf(f, "(%s = " FORMAT_SPECIFIER ")", #FIELD, value.FIELD); } } while(0)
+      S(i8, "%d", i8);
+      S(i16, "%d", i16);
+      S(i32, "%d", i32);
+      S(i64, "%ld", i64);
+      S(u8, "%u", u8);
+      S(u16, "%u", u16);
+      S(u32, "%u", u32);
+      S(u64, "%lu", u64);
+      S(f32, "%f", f32);
+      S(f64, "%f", f64);
+      fprintf(f, "\n");
+    } break;
+
+    case INSTRUCTION_ALLOCA: {
+      Type *ptrType = fn->values[instruction->alloca.valueIndex].type;
+      Type *type = instruction->alloca.type;
+      fprintf(f, " ");
+      printType(ptrType, f);
+      fprintf(f, " v%u = alloca ", instruction->alloca.valueIndex);
+      printType(type, f);
+      fprintf(f, " (size = %hu, alignment = %hu)\n", type->size, type->alignment);
+    } break;
+
     default: {
       printf(" unhandled case in printInstruction: %d %s\n", instruction->type, instructionTypeToString(instruction->type));
       ASSERT(false, "unhandled case");
@@ -114,10 +243,16 @@ void printType(Type *type, FILE *f) {
 
   #undef XX
 
+  if (type->flags & TYPE_FLAG_POINTER) {
+    fprintf(f, "*");
+    printType(type->pointerToType, f);
+    return;
+  }
+
   NOT_IMPLEMENTED;
 }
 
-void printFunction(Function *fn, FILE *f) {
+void printFunction(IRFunction *fn, FILE *f) {
   if (fn->flags & FUNCTION_FLAG_EXTERNAL) {
     fprintf(f, "external ");
   }
@@ -182,12 +317,12 @@ void printFunction(Function *fn, FILE *f) {
   }
   #else
   auto bucketIt = iterator(&fn->basicBlocks);
-  for (BasicBlock *block = bucketIt.next(); block != NULL; block = bucketIt.next()) {
+  for (IRBasicBlock *block = bucketIt.next(); block != NULL; block = bucketIt.next()) {
     fprintf(f, "\n");
     fprintf(f, "%s(%p):\n", block->name, block);
 
     auto instructionIt = iterator(&block->instructions);
-    for (Instruction *instruction = instructionIt.next(); instruction != NULL; instruction = instructionIt.next()) {
+    for (IRInstruction *instruction = instructionIt.next(); instruction != NULL; instruction = instructionIt.next()) {
       printInstruction(fn, instruction, f);
     }
 
@@ -197,10 +332,8 @@ void printFunction(Function *fn, FILE *f) {
   fprintf(f, "end of %.*s:\n\n", (int)fn->name.len, fn->name.data);
 }
 
-void printAll(Hub *h, FILE *f) {
+void printAll(IRHub *h, FILE *f) {
   for (int functionIndex = 0; functionIndex < h->functions.len; ++functionIndex) {
     printFunction(h->functions[functionIndex], f);
   }
-}
-
 }

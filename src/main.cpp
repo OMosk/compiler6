@@ -82,37 +82,34 @@ int main() {
   }
   printf("debugPrintAST took %fsec\n", now() - start);
 
-  ir::Hub hub = {};
-  ir::Builder builder = {};
-  ir::Builder *b = &builder;
-  b->h = &hub;
+  IRHub hub = {};
 
   {
-    ir::Function *fn = b->function(STR("empty_fn"));
-    b->jump(fn->init, fn->exit);
-    b->retVoid(fn->exit);
+    IRFunction *fn = createIRFunction(&hub, STR("empty_fn"));
+    irInstJump(fn->init, fn->exit);
+    irInstRetVoid(fn->exit);
   }
 
-  ir::Function *add = NULL;
+  IRFunction *add = NULL;
   {
     Array<Type*> args = {};
     append(&args, i32);
     append(&args, i32);
-    add = b->function(STR("add"), args, i32);
-    ir::BasicBlock *main = b->block(add, "main");
-    b->jump(add->init, main);
+    add = createIRFunction(&hub, STR("add"), args, i32);
+    IRBasicBlock *main = createIRBlock(add, "main");
+    irInstJump(add->init, main);
 
-    uint32_t result = b->iadd(main, add, 0, 1);
-    b->jump(main, add->exit);
+    uint32_t result = irInstIAdd(main, 0, 1);
+    irInstJump(main, add->exit);
 
-    b->ret(add->exit, result);
+    irInstRet(add->exit, result);
 
     #if 1
     double start = now();
-    Array<Value> argValues = {};
-    append(&argValues, Value{.i32 = 1});
-    append(&argValues, Value{.i32 = 2});
-    Value resultValue = runIR(add, argValues);
+    Array<IRValue> argValues = {};
+    append(&argValues, IRValue{.i32 = 1});
+    append(&argValues, IRValue{.i32 = 2});
+    IRValue resultValue = runIR(add, argValues);
     ASSERT(resultValue.i32 == 3, "Wrong result");
     double end = now();
 
@@ -120,42 +117,42 @@ int main() {
     #endif
   }
 
-  ir::Function *add3 = NULL;
+  IRFunction *add3 = NULL;
   {
     Array<Type*> args = {};
     append(&args, i32);
     append(&args, i32);
     append(&args, i32);
-    add3 = b->function(STR("add3"), args, i32);
-    ir::BasicBlock *main = b->block(add3, "main");
-    b->jump(add3->init, main);
+    add3 = createIRFunction(&hub, STR("add3"), args, i32);
+    IRBasicBlock *main = createIRBlock(add3, "main");
+    irInstJump(add3->init, main);
 
     Array<uint32_t> argValues = {};
     append(&argValues, 0u);
     append(&argValues, 1u);
 
-    //b->setArg(main, 0, 0);
-    //b->setArg(main, 1, 1);
-    uint32_t sum1 = b->call(main, add3, add, argValues);
+    //setArg(main, 0, 0);
+    //setArg(main, 1, 1);
+    uint32_t sum1 = irInstCall(main, add, argValues);
     argValues = {};
     append(&argValues, sum1);
     append(&argValues, 2u);
-    //b->setArg(main, 0, sum1);
-    //b->setArg(main, 1, 2);
-    uint32_t sum2 = b->call(main, add3, add, argValues);
+    //setArg(main, 0, sum1);
+    //setArg(main, 1, 2);
+    uint32_t sum2 = irInstCall(main, add, argValues);
 
-    b->jump(main, add3->exit);
+    irInstJump(main, add3->exit);
 
-    b->ret(add3->exit, sum2);
+    irInstRet(add3->exit, sum2);
 
     #if 1
     {
       double start = now();
-      Array<Value> argValues = {};
-      append(&argValues, Value{.i32 = 1});
-      append(&argValues, Value{.i32 = 2});
-      append(&argValues, Value{.i32 = 3});
-      Value resultValue = runIR(add3, argValues);
+      Array<IRValue> argValues = {};
+      append(&argValues, IRValue{.i32 = 1});
+      append(&argValues, IRValue{.i32 = 2});
+      append(&argValues, IRValue{.i32 = 3});
+      IRValue resultValue = runIR(add3, argValues);
       ASSERT(resultValue.i32 == 6, "Wrong result");
       double end = now();
 
@@ -164,43 +161,70 @@ int main() {
     #endif
   }
 
-  ir::Function *fnThatUsesPrintf = NULL;
+  IRFunction *fnThatUsesPrintf = NULL;
   {
-    ir::Function *irPrintf = NULL;
+    IRFunction *irPrintf = NULL;
     Array<Type*> args = {};
     append(&args, u64);
-    irPrintf = b->foreignFunction(STR("printf"), STR("libc"), args, i32, true);
+    irPrintf = createIRForeignFunction(&hub, STR("printf"), STR("libc"), args, i32, true);
 
-    fnThatUsesPrintf = b->function(STR("fnThatUsesPrintf"), args, i32);
+    fnThatUsesPrintf = createIRFunction(&hub, STR("fnThatUsesPrintf"), args, i32);
     {
       Array<uint32_t> argValues = {};
       append(&argValues, 0u);
-      uint32_t retValue = b->call(fnThatUsesPrintf->init, fnThatUsesPrintf, irPrintf, argValues);
-      b->jump(fnThatUsesPrintf->init, fnThatUsesPrintf->exit);
-      b->ret(fnThatUsesPrintf->exit, retValue);
+      uint32_t retValue = irInstCall(fnThatUsesPrintf->init, irPrintf, argValues);
+      irInstJump(fnThatUsesPrintf->init, fnThatUsesPrintf->exit);
+      irInstRet(fnThatUsesPrintf->exit, retValue);
     }
 
   }
 
-  ir::printAll(&hub, stdout);
+  IRFunction *fWithConstants = NULL;
+  {
+    IRFunction *f = createIRFunction(&hub, STR("constantTest"), {}, i32);
+    irInstJump(f->init, f->exit);
+    uint32_t valueIndex = irInstConstant(f->exit, i32, IRValue{.i32 = 12345});
+    irInstConstant(f->exit, i64, IRValue{.i64 = -1});
+    irInstConstant(f->exit, u64, IRValue{.u64 = (uint64_t)-1});
+    irInstConstant(f->exit, f32, IRValue{.f32 = 3.14});
+    irInstConstant(f->exit, f64, IRValue{.f64 = 6.28});
+    irInstRet(f->exit, valueIndex);
+
+    fWithConstants = f;
+  }
+
+  {
+    IRFunction *f = createIRFunction(&hub, STR("allocaTest"));
+    irInstJump(f->init, f->exit);
+    uint32_t address = irInstAlloca(f->exit, u8);
+    irInstRetVoid(f->exit);
+    runIR(f, {});
+  }
+
+  printAll(&hub, stdout);
 
   void *fptr = dlsym(RTLD_DEFAULT, "printf");
   printf("dlsym=%p native=%p\n", fptr, printf);
 
   {
     printf("before irPrintf\n");
-    Array<Value> argValues = {};
-    append(&argValues, Value{.u64 = (uint64_t)(const char *)"Hello world\n"});
-    Value result = runIR(fnThatUsesPrintf, argValues);
+    Array<IRValue> argValues = {};
+    append(&argValues, IRValue{.u64 = (uint64_t)(const char *)"Hello world\n"});
+    IRValue result = runIR(fnThatUsesPrintf, argValues);
     printf("after irPrintf n = %d\n", result.i32);
   }
 
   {
     printf("before irPrintf\n");
-    Array<Value> argValues = {};
-    append(&argValues, Value{.u64 = (uint64_t)(const char *)"Hello world\n"});
-    Value result = runIR(fnThatUsesPrintf, argValues);
+    Array<IRValue> argValues = {};
+    append(&argValues, IRValue{.u64 = (uint64_t)(const char *)"Hello world\n"});
+    IRValue result = runIR(fnThatUsesPrintf, argValues);
     printf("after irPrintf n = %d\n", result.i32);
+  }
+
+  {
+    IRValue result = runIR(fWithConstants, {});
+    printf("constant returned %d\n", result.i32);
   }
 
 

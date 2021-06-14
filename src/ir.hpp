@@ -4,12 +4,28 @@
 #include "utils.hpp"
 #include "compiler.hpp"
 
-namespace ir {
+union IRValue {
+  int8_t   i8;
+  int16_t i16;
+  int32_t i32;
+  int64_t i64;
 
-struct BasicBlock;
-struct Function;
+  uint8_t   u8;
+  uint16_t u16;
+  uint32_t u32;
+  uint64_t u64;
 
-struct Instruction {
+  float f32;
+  double f64;
+
+  void *ptr;
+};
+
+
+struct IRBasicBlock;
+struct IRFunction;
+
+struct IRInstruction {
   uint16_t type;
 
   union {
@@ -27,14 +43,24 @@ struct Instruction {
     uint32_t retValue;
 
     struct {
-      BasicBlock *block;
+      IRBasicBlock *block;
     } jump;
 
     struct {
-      Function *fn;
+      IRFunction *fn;
       uint32_t ret;
       Array<uint32_t> args;
     } call;
+
+    struct {
+      IRValue constant;
+      uint32_t valueIndex;
+    } constantInit;
+
+    struct {
+      Type *type;
+      uint32_t valueIndex;
+    } alloca;
   };
 
   Site *site;
@@ -48,24 +74,27 @@ struct Instruction {
   XX(INSTRUCTION_IADD) \
   XX(INSTRUCTION_SET_ARG) \
   XX(INSTRUCTION_CALL) \
+  XX(INSTRUCTION_CONSTANT) \
+  XX(INSTRUCTION_ALLOCA) \
   XX(INSTRUCTION_LAST_INSTRUCTION) \
 
 
 #define XX(INSTRUCTION) INSTRUCTION,
-enum InstructionType {
+enum IRInstructionType {
   INSTRUCTIONS
 };
 #undef XX
 
-struct BasicBlock {
+struct IRBasicBlock {
   const char *name;
+  IRFunction *fn;
 
-  BucketedArray<Instruction, 8> instructions;
+  BucketedArray<IRInstruction, 8> instructions;
 
-  Instruction terminator;
+  IRInstruction terminator;
 };
 
-struct Value {
+struct IRValueInfo {
   Type *type;
 };
 
@@ -74,15 +103,15 @@ enum {
   FUNCTION_FLAG_VARIADIC = 1 << 1,
 };
 
-struct Function {
+struct IRFunction {
   Str name;
   Type *retType;
 
-  BasicBlock *init;
-  BasicBlock *exit;
+  IRBasicBlock *init;
+  IRBasicBlock *exit;
 
-  BucketedArray<BasicBlock, 8> basicBlocks;
-  Array<Value> values;
+  BucketedArray<IRBasicBlock, 8> basicBlocks;
+  Array<IRValueInfo> values;
 
   int blockNameCounter;
   int valuesNumber;
@@ -93,103 +122,25 @@ struct Function {
   void *ptr;
 };
 
-struct Hub {
-  Array<Function *> functions;
+struct IRHub {
+  Array<IRFunction *> functions;
 };
-void printAll(Hub *h, FILE *f);
+void printAll(IRHub *h, FILE *f);
 
-struct Builder {
-  Hub *h;
 
-  Function *function(Str name, Array<Type *> args = {}, Type *retType = NULL) {
-    Function *fn = (Function *)alloc(sizeof(Function), alignof(Function), 1);
-    *fn = {};
-    fn->init = alloc_back(&fn->basicBlocks);
-    fn->exit = alloc_back(&fn->basicBlocks);
+IRFunction *createIRFunction(IRHub *h, Str name, Array<Type *> args = {}, Type *retType = NULL);
 
-    fn->init->name = "init";
-    fn->exit->name = "exit";
+IRFunction *createIRForeignFunction(IRHub *h, Str name, Str library, Array<Type *> args = {}, Type *retType = NULL, bool variadic = false);
 
-    fn->name = name;
+IRBasicBlock *createIRBlock(IRFunction *fn, const char *name = "");
 
-    fn->argsNumber = args.len;
-    #if 0
-    for (int i = 0; i < args.len; ++i) {
-      Value *value = alloc_back(&fn->values);
-      value->type = args[i];
-      value->idx = i;
-      fn->valuesNumber++;
-    }
-    #else
-    resize(&fn->values, args.len);
-    for (int i = 0; i < args.len; ++i) {
-      Value value = {};
-      value.type = args[i];
-      fn->values[i] = value;
-      fn->valuesNumber++;
-    }
-    #endif
-    fn->retType = retType;
-
-    //TODO: Concurrency:
-    append(&h->functions, fn);
-
-    return fn;
-  };
-
-  Function *foreignFunction(Str name, Str library, Array<Type *> args = {}, Type *retType = NULL, bool variadic = false) {
-    Function *fn = function(name, args, retType);
-    fn->flags = FUNCTION_FLAG_EXTERNAL;
-    fn->library = library;
-    fn->symbolName = name;
-    if (variadic) fn->flags |= FUNCTION_FLAG_VARIADIC;
-    return fn;
-  }
-
-  BasicBlock *block(Function *fn, const char *name = "") {
-    BasicBlock *result = alloc_back(&fn->basicBlocks);
-    *result = {};
-
-    //TODO: ifdef this out in optimized build
-    result->name = SPrintf("%s_%d", name, fn->blockNameCounter++).data;
-
-    return result;
-  };
-
-  Instruction *instruction(BasicBlock *bb, uint16_t type) {
-    if (bb->terminator.type) {
-      ASSERT(false, "Attempting to insert instruction into block that already has terminator");
-    }
-
-    Instruction *inst = alloc_back(&bb->instructions);
-
-    inst->type = type;
-    return inst;
-  }
-
-  Instruction *terminator(BasicBlock *bb, uint16_t type) {
-    if (bb->terminator.type) {
-      ASSERT(false, "Attempting to insert instruction into block that already has terminator");
-    }
-    Instruction *inst = &bb->terminator;
-    inst->type = type;
-    return inst;
-  }
-
-  uint32_t value(Function *fn) {
-    append(&fn->values, {});
-    return fn->valuesNumber++;
-  }
-
-  void jump(BasicBlock *bb, BasicBlock *to);
-  void retVoid(BasicBlock *bb);
-  void ret(BasicBlock *bb, uint32_t op1);
-  uint32_t iadd(BasicBlock *bb, Function *fn, uint32_t op1, uint32_t op2);
-  //void setArg(BasicBlock *bb, uint32_t argNo, uint32_t op);
-  uint32_t call(BasicBlock *bb, Function *caller, Function *callee, Array<uint32_t> args);
-};
+void irInstJump(IRBasicBlock *bb, IRBasicBlock *to);
+void irInstRetVoid(IRBasicBlock *bb);
+void irInstRet(IRBasicBlock *bb, uint32_t op1);
+uint32_t irInstIAdd(IRBasicBlock *bb, uint32_t op1, uint32_t op2);
+uint32_t irInstCall(IRBasicBlock *bb, IRFunction *callee, Array<uint32_t> args);
+uint32_t irInstConstant(IRBasicBlock *bb, Type *type, IRValue v);
+uint32_t irInstAlloca(IRBasicBlock *bb, Type *type);
 
 void printType(Type *type, FILE *f);
 const char *instructionTypeToString(int type);
-
-}

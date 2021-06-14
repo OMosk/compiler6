@@ -4,7 +4,7 @@
 #include <sys/mman.h>
 #include <dlfcn.h>
 
-Value trampoline_generator_with_ptr3(void *fn_ptr, int returns_float, int args_count, Value *args, bool *is_integer) {
+IRValue trampoline_generator_with_ptr3(void *fn_ptr, int returns_float, int args_count, IRValue *args, bool *is_integer) {
   static thread_local char *buffer = (char *) mmap(0, 4096, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
   if (!buffer) {
     printf("Failed to mmap page\n");
@@ -77,66 +77,67 @@ Value trampoline_generator_with_ptr3(void *fn_ptr, int returns_float, int args_c
   //printf("JITted %lu bytes\n", len);
 
   uint64_t (*fn)() = (uint64_t(*)())buffer;
-  Value result;
+  IRValue result;
   result.u64 = fn();
   return result;
 }
 
 
-void internalRun(ir::Function *fn, Array<Value> *registers, int registersOffset, Str stack, int stackOffset) {
+void internalRun(IRFunction *fn, Array<IRValue> *registers, int registersOffset, Str stack, int stackOffset) {
   resize(registers, registersOffset + fn->valuesNumber);
 
-  ir::BasicBlock *block = fn->init;
+  IRBasicBlock *block = fn->init;
   auto instructionIt = iterator(&block->instructions);
-  ir::Instruction *instruction = instructionIt.next();
+  IRInstruction *instruction = instructionIt.next();
   if (!instruction) {
     instruction = &block->terminator;
   }
   int maxArgIndex = 0;
   for (;;) {
     switch (instruction->type) {
-    case ir::INSTRUCTION_JUMP: {
+    case INSTRUCTION_JUMP: {
       block = instruction->jump.block;
       instructionIt = iterator(&block->instructions);
     } break;
 
-    case ir::INSTRUCTION_IADD: {
+    case INSTRUCTION_IADD: {
      (*registers)[registersOffset + instruction->binaryOp.ret].u64
        = (*registers)[registersOffset + instruction->binaryOp.op1].u64 +
          (*registers)[registersOffset + instruction->binaryOp.op2].u64;
     } break;
 
-    case ir::INSTRUCTION_RET: {
+    case INSTRUCTION_RET: {
       (*registers)[registersOffset - 1] = (*registers)[registersOffset + instruction->retValue];
       return;
     } break;
 
-    //case ir::INSTRUCTION_SET_ARG: {
+    //case INSTRUCTION_SET_ARG: {
     //  ensureAtLeast(registers, registersOffset + fn->valuesNumber + 2 + instruction->setArg.argNo); // return register + arg registers from zero
     //  (*registers)[registersOffset + fn->valuesNumber + 1 + instruction->setArg.argNo] = (*registers)[registersOffset + instruction->setArg.op];
     //  maxArgIndex = instruction->setArg.argNo;
     //} break;
 
-    case ir::INSTRUCTION_CALL: {
-      ir::Function *callee = instruction->call.fn;
-      if (callee->flags & ir::FUNCTION_FLAG_EXTERNAL) {
+    case INSTRUCTION_CALL: {
+      IRFunction *callee = instruction->call.fn;
+      if (callee->flags & FUNCTION_FLAG_EXTERNAL) {
         if (!callee->ptr) {
           callee->ptr = dlsym(RTLD_DEFAULT, callee->symbolName.data);
-          //load symbol from already loaded libraries
+          //NOTE: load symbol from already loaded libraries
           if (!callee->ptr) {
+            //TODO: dlopen + dlsym should go here
             NOT_IMPLEMENTED;
           }
         }
         int argsCount = instruction->call.args.len;
         bool isIntegers[instruction->call.args.len];
-        Value values[instruction->call.args.len];
+        IRValue values[instruction->call.args.len];
         for (int argNo = 0; argNo < instruction->call.args.len; ++argNo) {
           values[argNo] = (*registers)[registersOffset + instruction->call.args[argNo]];
           isIntegers[argNo] = (fn->values[instruction->call.args[argNo]].type->flags & TYPE_FLAG_FLOATING_POINT) == 0;
         }
         bool returnIsFloat = callee->retType->flags&TYPE_FLAG_FLOATING_POINT;
         double start = now();
-        Value result = trampoline_generator_with_ptr3(callee->ptr, returnIsFloat, argsCount, values, isIntegers);
+        IRValue result = trampoline_generator_with_ptr3(callee->ptr, returnIsFloat, argsCount, values, isIntegers);
         double end = now();
         printf("Trampoline JIT + printf call took: %fsec\n", end - start);
         double start2  = now();
@@ -156,8 +157,19 @@ void internalRun(ir::Function *fn, Array<Value> *registers, int registersOffset,
       maxArgIndex = 0;
     } break;
 
+    case INSTRUCTION_CONSTANT: {
+      (*registers)[registersOffset + instruction->constantInit.valueIndex] = instruction->constantInit.constant;
+    } break;
+
+    case INSTRUCTION_ALLOCA: {
+      char *addr = stack.data + stackOffset;
+      stackOffset += instruction->alloca.type->size;
+      //TODO: CONTINUE_HERE
+      (*registers)[registersOffset + instruction->alloca.valueIndex].ptr = addr;
+    } break;
+
     default:
-      printf("%d %s instruction not implemented\n", instruction->type, ir::instructionTypeToString(instruction->type));
+      printf("%d %s instruction not implemented\n", instruction->type, instructionTypeToString(instruction->type));
     NOT_IMPLEMENTED;
     }
 
@@ -168,12 +180,12 @@ void internalRun(ir::Function *fn, Array<Value> *registers, int registersOffset,
   }
 }
 
-Value runIR(ir::Function *fn, Array<Value> args) {
+IRValue runIR(IRFunction *fn, Array<IRValue> args) {
   //NOTE: function runs in temporary area
   char *allocatorCurrent = global.current;
 
   ASSERT(args.len == fn->argsNumber, "wrong number of args");
-  Array<Value> registers = {};
+  Array<IRValue> registers = {};
   resize(&registers, 1/*return register*/ + args.len);
   registers[0].i64 = 0;
   for (int i = 0; i < args.len; ++i) {
@@ -186,7 +198,7 @@ Value runIR(ir::Function *fn, Array<Value> args) {
 
   internalRun(fn, &registers, 1, stack, 0);
 
-  Value result = registers[0];
+  IRValue result = registers[0];
 
   //NOTE: restoring temporary area to previous state
   global.current = allocatorCurrent;
