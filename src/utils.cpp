@@ -208,3 +208,14 @@ void showCodeLocation(Site loc, bool showUnderline) {
   printf("┘");
   putchar('\n');
 }
+
+
+uint64_t alignAddressUpwards(uint64_t ptr, uint64_t alignment) {
+  auto a = alignment;
+  auto shift = a - ptr % a;
+  if (shift == a) shift = 0;
+  auto result = ptr + shift;
+  ASSERT(result % alignment == 0, "Failed to align");
+
+  return result;
+}

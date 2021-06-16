@@ -82,109 +82,21 @@ IRValue trampoline_generator_with_ptr3(void *fn_ptr, int returns_float, int args
   return result;
 }
 
+struct InterpreterFrameData {
+  IRFunction *fn;
+  int registersOffset;
+  int stackOffset;
+  IRBasicBlock *block;
+  InstructionsBucketedArray::Iterator instructionIterator;
+  IRInstruction *instruction;
+  InterpreterFrameData *prevFrame;
+};
 
-void internalRun(IRFunction *fn, Array<IRValue> *registers, int registersOffset, Str stack, int stackOffset) {
-  resize(registers, registersOffset + fn->valuesNumber);
-
-  IRBasicBlock *block = fn->init;
-  auto instructionIt = iterator(&block->instructions);
-  IRInstruction *instruction = instructionIt.next();
-  if (!instruction) {
-    instruction = &block->terminator;
-  }
-  int maxArgIndex = 0;
-  for (;;) {
-    switch (instruction->type) {
-    case INSTRUCTION_JUMP: {
-      block = instruction->jump.block;
-      instructionIt = iterator(&block->instructions);
-    } break;
-
-    case INSTRUCTION_IADD: {
-     (*registers)[registersOffset + instruction->binaryOp.ret].u64
-       = (*registers)[registersOffset + instruction->binaryOp.op1].u64 +
-         (*registers)[registersOffset + instruction->binaryOp.op2].u64;
-    } break;
-
-    case INSTRUCTION_RET: {
-      (*registers)[registersOffset - 1] = (*registers)[registersOffset + instruction->retValue];
-      return;
-    } break;
-
-    //case INSTRUCTION_SET_ARG: {
-    //  ensureAtLeast(registers, registersOffset + fn->valuesNumber + 2 + instruction->setArg.argNo); // return register + arg registers from zero
-    //  (*registers)[registersOffset + fn->valuesNumber + 1 + instruction->setArg.argNo] = (*registers)[registersOffset + instruction->setArg.op];
-    //  maxArgIndex = instruction->setArg.argNo;
-    //} break;
-
-    case INSTRUCTION_CALL: {
-      IRFunction *callee = instruction->call.fn;
-      if (callee->flags & FUNCTION_FLAG_EXTERNAL) {
-        if (!callee->ptr) {
-          callee->ptr = dlsym(RTLD_DEFAULT, callee->symbolName.data);
-          //NOTE: load symbol from already loaded libraries
-          if (!callee->ptr) {
-            //TODO: dlopen + dlsym should go here
-            NOT_IMPLEMENTED;
-          }
-        }
-        int argsCount = instruction->call.args.len;
-        bool isIntegers[instruction->call.args.len];
-        IRValue values[instruction->call.args.len];
-        for (int argNo = 0; argNo < instruction->call.args.len; ++argNo) {
-          values[argNo] = (*registers)[registersOffset + instruction->call.args[argNo]];
-          isIntegers[argNo] = (fn->values[instruction->call.args[argNo]].type->flags & TYPE_FLAG_FLOATING_POINT) == 0;
-        }
-        bool returnIsFloat = callee->retType->flags&TYPE_FLAG_FLOATING_POINT;
-        double start = now();
-        IRValue result = trampoline_generator_with_ptr3(callee->ptr, returnIsFloat, argsCount, values, isIntegers);
-        double end = now();
-        printf("Trampoline JIT + printf call took: %fsec\n", end - start);
-        double start2  = now();
-        printf("Hello world\n");
-        double end2 = now();
-        printf("Regular          printf call took: %fsec\n", end2 - start2);
-        (*registers)[registersOffset + instruction->call.ret] = result;
-      } else {
-        ensureAtLeast(registers, registersOffset + fn->valuesNumber + 1 + instruction->call.args.len); // return register + args
-        for (int argNo = 0; argNo < instruction->call.args.len; ++argNo) {
-          (*registers)[registersOffset + fn->valuesNumber + 1 + argNo] = (*registers)[registersOffset + instruction->call.args[argNo]];
-        }
-        //TODO: stackOffset alignment may be needed
-        internalRun(instruction->call.fn, registers, registersOffset + fn->valuesNumber + 1, stack, stackOffset);
-        (*registers)[registersOffset + instruction->call.ret] = (*registers)[registersOffset + fn->valuesNumber];
-      }
-      maxArgIndex = 0;
-    } break;
-
-    case INSTRUCTION_CONSTANT: {
-      (*registers)[registersOffset + instruction->constantInit.valueIndex] = instruction->constantInit.constant;
-    } break;
-
-    case INSTRUCTION_ALLOCA: {
-      char *addr = stack.data + stackOffset;
-      stackOffset += instruction->alloca.type->size;
-      //TODO: CONTINUE_HERE
-      (*registers)[registersOffset + instruction->alloca.valueIndex].ptr = addr;
-    } break;
-
-    default:
-      printf("%d %s instruction not implemented\n", instruction->type, instructionTypeToString(instruction->type));
-    NOT_IMPLEMENTED;
-    }
-
-    instruction = instructionIt.next();
-    if (!instruction) {
-      instruction = &block->terminator;
-    }
-  }
-}
-
-IRValue runIR(IRFunction *fn, Array<IRValue> args) {
+IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
   //NOTE: function runs in temporary area
   char *allocatorCurrent = global.current;
 
-  ASSERT(args.len == fn->argsNumber, "wrong number of args");
+  ASSERT(args.len == entryFunction->argsNumber, "wrong number of args");
   Array<IRValue> registers = {};
   resize(&registers, 1/*return register*/ + args.len);
   registers[0].i64 = 0;
@@ -196,11 +108,168 @@ IRValue runIR(IRFunction *fn, Array<IRValue> args) {
   stack.len = 8 * 1024;
   stack.data = (char *)alloc(stack.len, 8/*alignment*/, 1); // Think through if we need to match 16 byte alignment as int amd64 convention
 
-  internalRun(fn, &registers, 1, stack, 0);
+  InterpreterFrameData *currentFrame = NULL;
+  {
+    InterpreterFrameData *frame = (InterpreterFrameData *) stack.data;
+    *frame = {};
+    frame->fn = entryFunction;
+    frame->registersOffset = 1;
+    frame->stackOffset = sizeof(InterpreterFrameData);
+    frame->block = entryFunction->init;
+    frame->instructionIterator = iterator(&entryFunction->init->instructions);
+    //TODO maybe combine with resize for arguments earlier
+    resize(&registers, frame->registersOffset + entryFunction->valuesNumber);
+
+    currentFrame = frame;
+  }
+
+  while (currentFrame) {
+    //IRInstruction *instruction = currentFrame->instructionIterator.next();
+    //if (!instruction) {
+    //  instruction = &currentFrame->block->terminator;
+    //}
+    //currentFrame->instruction = instruction;
+    currentFrame->instruction = currentFrame->instructionIterator.next();
+    if (!currentFrame->instruction) {
+      currentFrame->instruction = &currentFrame->block->terminator;
+    }
+
+    switch (currentFrame->instruction->type) {
+    case INSTRUCTION_JUMP: {
+      currentFrame->block = currentFrame->instruction->jump.block;
+      currentFrame->instructionIterator = iterator(&currentFrame->block->instructions);
+    } break;
+
+    case INSTRUCTION_IADD: {
+     registers[currentFrame->registersOffset + currentFrame->instruction->binaryOp.ret].u64
+       = registers[currentFrame->registersOffset + currentFrame->instruction->binaryOp.op1].u64 +
+         registers[currentFrame->registersOffset + currentFrame->instruction->binaryOp.op2].u64;
+    } break;
+
+    case INSTRUCTION_RET: {
+      registers[currentFrame->registersOffset - 1] = registers[currentFrame->registersOffset + currentFrame->instruction->retValue];
+      currentFrame = currentFrame->prevFrame;
+      goto handle_ret;
+    } break;
+
+    case INSTRUCTION_RET_VOID: {
+      currentFrame = currentFrame->prevFrame;
+      goto handle_ret;
+    } break;
+
+    case INSTRUCTION_CALL: {
+      IRFunction *callee = currentFrame->instruction->call.fn;
+      if (callee->flags & FUNCTION_FLAG_EXTERNAL) {
+        if (!callee->ptr) {
+          callee->ptr = dlsym(RTLD_DEFAULT, callee->symbolName.data);
+          //NOTE: load symbol from already loaded libraries
+          if (!callee->ptr) {
+            //TODO: dlopen + dlsym should go here
+            NOT_IMPLEMENTED;
+          }
+        }
+        int argsCount = currentFrame->instruction->call.args.len;
+        bool isIntegers[currentFrame->instruction->call.args.len];
+        IRValue values[currentFrame->instruction->call.args.len];
+        for (int argNo = 0; argNo < currentFrame->instruction->call.args.len; ++argNo) {
+          values[argNo] = registers[currentFrame->registersOffset + currentFrame->instruction->call.args[argNo]];
+          isIntegers[argNo] = (currentFrame->fn->values[currentFrame->instruction->call.args[argNo]].type->flags & TYPE_FLAG_FLOATING_POINT) == 0;
+        }
+        bool returnIsFloat = callee->retType->flags&TYPE_FLAG_FLOATING_POINT;
+        double start = now();
+        IRValue result = trampoline_generator_with_ptr3(callee->ptr, returnIsFloat, argsCount, values, isIntegers);
+        double end = now();
+        printf("Trampoline JIT + printf call took: %fsec\n", end - start);
+        double start2  = now();
+        printf("Hello world\n");
+        double end2 = now();
+        printf("Regular          printf call took: %fsec\n", end2 - start2);
+        registers[currentFrame->registersOffset + currentFrame->instruction->call.ret] = result;
+      } else {
+        ensureAtLeast(&registers, currentFrame->registersOffset + currentFrame->fn->valuesNumber + 1 + currentFrame->instruction->call.args.len); // return register + args
+        for (int argNo = 0; argNo < currentFrame->instruction->call.args.len; ++argNo) {
+          registers[currentFrame->registersOffset + currentFrame->fn->valuesNumber + 1 + argNo] = registers[currentFrame->registersOffset + currentFrame->instruction->call.args[argNo]];
+        }
+        currentFrame->stackOffset = alignAddressUpwards(currentFrame->stackOffset, alignof(InterpreterFrameData));
+        ASSERT(currentFrame->stackOffset + sizeof(InterpreterFrameData) < stack.len, "interpreter stack overflow on call instruction");
+        InterpreterFrameData *newFrame = (InterpreterFrameData *)(stack.data + currentFrame->stackOffset);
+        *newFrame = {};
+        newFrame->fn = currentFrame->instruction->call.fn;
+        newFrame->registersOffset = currentFrame->registersOffset + currentFrame->fn->valuesNumber + 1;
+        newFrame->stackOffset = currentFrame->stackOffset + sizeof(InterpreterFrameData);
+        newFrame->prevFrame = currentFrame;
+        newFrame->block = newFrame->fn->init;
+        newFrame->instructionIterator = iterator(&newFrame->block->instructions);
+        currentFrame = newFrame;
+
+        resize(&registers, currentFrame->registersOffset + entryFunction->valuesNumber);
+      }
+    } break;
+
+    case INSTRUCTION_CONSTANT: {
+      registers[currentFrame->registersOffset + currentFrame->instruction->constantInit.valueIndex] = currentFrame->instruction->constantInit.constant;
+    } break;
+
+    case INSTRUCTION_ALLOCA: {
+      char *addr = stack.data + currentFrame->stackOffset;
+      ASSERT(currentFrame->stackOffset + currentFrame->instruction->alloca.type->size < stack.len, "interpreter stack overflow on alloca");
+      currentFrame->stackOffset = alignAddressUpwards(currentFrame->stackOffset, currentFrame->instruction->alloca.type->alignment);
+      currentFrame->stackOffset += currentFrame->instruction->alloca.type->size;
+      registers[currentFrame->registersOffset + currentFrame->instruction->alloca.valueIndex].ptr = addr;
+    } break;
+
+    case INSTRUCTION_STORE: {
+      IRValue data = registers[currentFrame->registersOffset + currentFrame->instruction->store.value];
+      uint32_t sizeBytes = currentFrame->fn->values[currentFrame->instruction->store.value].type->size;
+      IRValue *target = (IRValue *)registers[currentFrame->registersOffset + currentFrame->instruction->store.to].ptr;
+      switch (sizeBytes) {
+        case 1: target->u8 = data.u8; break;
+        case 2: target->u16 = data.u16; break;
+        case 4: target->u32 = data.u32; break;
+        case 8: target->u64 = data.u64; break;
+        default: {
+          printf("Unexpected data size in INSTRUCTION_STORE: %u\n", sizeBytes);
+          NOT_IMPLEMENTED;
+        } break;
+      }
+    } break;
+
+    case INSTRUCTION_LOAD: {
+      IRValue *target = &registers[currentFrame->registersOffset + currentFrame->instruction->load.ret];
+
+      IRValue *data = (IRValue *) registers[currentFrame->registersOffset + currentFrame->instruction->load.from].ptr;
+      uint32_t sizeBytes = currentFrame->fn->values[currentFrame->instruction->load.ret].type->size;
+      switch (sizeBytes) {
+        case 1: target->u8 = data->u8; break;
+        case 2: target->u16 = data->u16; break;
+        case 4: target->u32 = data->u32; break;
+        case 8: target->u64 = data->u64; break;
+        default: {
+          printf("Unexpected data size in INSTRUCTION_LOAD: %u\n", sizeBytes);
+          NOT_IMPLEMENTED;
+        } break;
+      }
+    } break;
+
+    default:
+      printf("%d %s instruction not implemented\n", currentFrame->instruction->type, instructionTypeToString(currentFrame->instruction->type));
+    NOT_IMPLEMENTED;
+    }
+
+    continue;
+
+    handle_ret:
+    if (currentFrame) {
+      if (currentFrame->instruction->type == INSTRUCTION_CALL) {
+        registers[currentFrame->registersOffset + currentFrame->instruction->call.ret] = registers[currentFrame->registersOffset + currentFrame->fn->valuesNumber];
+      }
+    }
+  }
 
   IRValue result = registers[0];
 
   //NOTE: restoring temporary area to previous state
+  //Maybe it is better if caller restores temporary area after deep copy is made if necessary
   global.current = allocatorCurrent;
 
   return result;

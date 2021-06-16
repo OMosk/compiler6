@@ -242,3 +242,5 @@ hash(unsigned char *str)
     return hash;
 }
 */
+
+uint64_t alignAddressUpwards(uint64_t ptr, uint64_t alignment);

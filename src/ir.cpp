@@ -1,6 +1,63 @@
 #include "ir.hpp"
 #include "compiler.hpp"
 
+IRValue valueI8(int8_t v) {
+  IRValue r = {};
+  r.i8 = v;
+  return r;
+}
+IRValue valueI16(int16_t v) {
+  IRValue r = {};
+  r.i16 = v;
+  return r;
+}
+IRValue valueI32(int32_t v) {
+  IRValue r = {};
+  r.i32 = v;
+  return r;
+}
+IRValue valueI64(int64_t v) {
+  IRValue r = {};
+  r.i64 = v;
+  return r;
+}
+IRValue  valueU8(uint8_t v) {
+  IRValue r = {};
+  r.u8 = v;
+  return r;
+}
+IRValue valueU16(uint16_t v) {
+  IRValue r = {};
+  r.u16 = v;
+  return r;
+}
+IRValue valueU32(uint32_t v) {
+  IRValue r = {};
+  r.u32 = v;
+  return r;
+}
+IRValue valueU64(uint64_t v){
+  IRValue r = {};
+  r.u64 = v;
+  return r;
+}
+IRValue valueF32(float v){
+  IRValue r = {};
+  r.f32 = v;
+  return r;
+}
+IRValue valueF64(double v) {
+  IRValue r = {};
+  r.f64 = v;
+  return r;
+}
+IRValue valuePtr(void *v) {
+  IRValue r = {};
+  r.ptr = v;
+  return r;
+}
+
+
 IRFunction *createIRFunction(IRHub *h, Str name, Array<Type *> args, Type *retType) {
   IRFunction *fn = (IRFunction *)alloc(sizeof(IRFunction), alignof(IRFunction), 1);
   *fn = {};
@@ -60,6 +117,7 @@ IRInstruction *createIRInstruction(IRBasicBlock *bb, uint16_t type) {
   }
 
   IRInstruction *inst = alloc_back(&bb->instructions);
+  *inst = {};
 
   inst->type = type;
   return inst;
@@ -141,6 +199,23 @@ uint32_t irInstAlloca(IRBasicBlock *bb, Type *type) {
   return result;
 }
 
+uint32_t irInstLoad(IRBasicBlock *bb, Type *type, uint32_t ptrValue) {
+  uint32_t result = createIRValue(bb->fn);
+  ASSERT(type->size <= 8, "Load works only for primitive types");
+  bb->fn->values[result].type = type;
+  IRInstruction *load = createIRInstruction(bb, INSTRUCTION_LOAD);
+  load->load.ret = result;
+  load->load.from = ptrValue;
+
+  return result;
+}
+
+void irInstStore(IRBasicBlock *bb, uint32_t ptrValue, uint32_t value) {
+  IRInstruction *store = createIRInstruction(bb, INSTRUCTION_STORE);
+  store->store.to = ptrValue;
+  store->store.value = value;
+}
+
 const char *instructionTypeToString(int type) {
   #define XX(INSTRUCTION) case INSTRUCTION: return #INSTRUCTION;
   switch (type) {
@@ -152,17 +227,17 @@ const char *instructionTypeToString(int type) {
 
 
 void printInstruction(IRFunction *fn, IRInstruction *instruction, FILE *f) {
-  fprintf(f, "\t%8p: %3d", instruction, instruction->type);
+  fprintf(f, "  %8p: %3d %-25s|", instruction, instruction->type, instructionTypeToString(instruction->type));
   switch (instruction->type) {
     case INSTRUCTION_JUMP: {
-      fprintf(f, " %s to %s(%p)\n",
-        instructionTypeToString(instruction->type), instruction->jump.block->name, instruction->jump.block);
+      fprintf(f, " jump to %s(%p)\n",
+        instruction->jump.block->name, instruction->jump.block);
     } break;
     case INSTRUCTION_RET_VOID: {
-      fprintf(f, " %s\n", instructionTypeToString(instruction->type));
+      fprintf(f, " \n");
     } break;
     case INSTRUCTION_RET: {
-      fprintf(f, " %s v%u\n", instructionTypeToString(instruction->type), instruction->retValue);
+      fprintf(f, " v%u\n", instruction->retValue);
     } break;
     case INSTRUCTION_IADD: {
       fprintf(f, " ");
@@ -212,6 +287,16 @@ void printInstruction(IRFunction *fn, IRInstruction *instruction, FILE *f) {
       fprintf(f, " v%u = alloca ", instruction->alloca.valueIndex);
       printType(type, f);
       fprintf(f, " (size = %hu, alignment = %hu)\n", type->size, type->alignment);
+    } break;
+
+    case INSTRUCTION_STORE: {
+      fprintf(f, " store value v%u to address v%u\n", instruction->store.value, instruction->store.to);
+    } break;
+
+    case INSTRUCTION_LOAD: {
+      fprintf(f, " ");
+      printType(fn->values[instruction->load.ret].type, f);
+      fprintf(f, " v%u = load v%u\n", instruction->load.ret, instruction->load.from);
     } break;
 
     default: {

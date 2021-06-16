@@ -183,22 +183,27 @@ int main() {
   {
     IRFunction *f = createIRFunction(&hub, STR("constantTest"), {}, i32);
     irInstJump(f->init, f->exit);
-    uint32_t valueIndex = irInstConstant(f->exit, i32, IRValue{.i32 = 12345});
-    irInstConstant(f->exit, i64, IRValue{.i64 = -1});
-    irInstConstant(f->exit, u64, IRValue{.u64 = (uint64_t)-1});
-    irInstConstant(f->exit, f32, IRValue{.f32 = 3.14});
-    irInstConstant(f->exit, f64, IRValue{.f64 = 6.28});
+    uint32_t valueIndex = irInstConstant(f->exit, i32, valueI32(12345));
+    irInstConstant(f->exit, i64, valueI64(-1));
+    irInstConstant(f->exit, u64, valueU64((uint64_t)-1));
+    irInstConstant(f->exit, f32, valueF32(3.14));
+    irInstConstant(f->exit, f64, valueF64(6.28));
     irInstRet(f->exit, valueIndex);
 
     fWithConstants = f;
   }
 
   {
-    IRFunction *f = createIRFunction(&hub, STR("allocaTest"));
+    IRFunction *f = createIRFunction(&hub, STR("allocaTest"), {}, u64);
     irInstJump(f->init, f->exit);
-    uint32_t address = irInstAlloca(f->exit, u8);
-    irInstRetVoid(f->exit);
-    runIR(f, {});
+    uint32_t address = irInstAlloca(f->exit, u64);
+    uint32_t constant = irInstConstant(f->exit, u64, valueU64(12345678));
+    irInstStore(f->exit, address, constant);
+    uint32_t l = irInstLoad(f->exit, u64, address);
+    irInstRet(f->exit, l);
+    IRValue value = runIR(f, {});
+    ASSERT(value.u64 == 12345678, "Alloca/store/load fail");
+    printf("Alloca, store, load passed\n");
   }
 
   printAll(&hub, stdout);

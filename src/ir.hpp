@@ -21,6 +21,21 @@ union IRValue {
   void *ptr;
 };
 
+IRValue valueI8(int8_t v);
+IRValue valueI16(int16_t v);
+IRValue valueI32(int32_t v);
+IRValue valueI64(int64_t v);
+
+IRValue  valueU8(uint8_t v);
+IRValue valueU16(uint16_t v);
+IRValue valueU32(uint32_t v);
+IRValue valueU64(uint64_t v);
+
+IRValue valueF32(float v);
+IRValue valueF64(double v);
+
+IRValue valuePtr(void *v);
+
 
 struct IRBasicBlock;
 struct IRFunction;
@@ -61,6 +76,17 @@ struct IRInstruction {
       Type *type;
       uint32_t valueIndex;
     } alloca;
+
+    struct {
+      uint32_t ret;
+      uint32_t from;
+    } load;
+
+    struct {
+      uint32_t to;
+      uint32_t value;
+    } store;
+
   };
 
   Site *site;
@@ -76,6 +102,9 @@ struct IRInstruction {
   XX(INSTRUCTION_CALL) \
   XX(INSTRUCTION_CONSTANT) \
   XX(INSTRUCTION_ALLOCA) \
+  XX(INSTRUCTION_STORE) \
+  XX(INSTRUCTION_LOAD) \
+  XX(INSTRUCTION_COPY_BYTES) \
   XX(INSTRUCTION_LAST_INSTRUCTION) \
 
 
@@ -85,11 +114,13 @@ enum IRInstructionType {
 };
 #undef XX
 
+typedef BucketedArray<IRInstruction, 8> InstructionsBucketedArray;
+
 struct IRBasicBlock {
   const char *name;
   IRFunction *fn;
 
-  BucketedArray<IRInstruction, 8> instructions;
+  InstructionsBucketedArray instructions;
 
   IRInstruction terminator;
 };
@@ -141,6 +172,8 @@ uint32_t irInstIAdd(IRBasicBlock *bb, uint32_t op1, uint32_t op2);
 uint32_t irInstCall(IRBasicBlock *bb, IRFunction *callee, Array<uint32_t> args);
 uint32_t irInstConstant(IRBasicBlock *bb, Type *type, IRValue v);
 uint32_t irInstAlloca(IRBasicBlock *bb, Type *type);
+uint32_t irInstLoad(IRBasicBlock *bb, Type *type, uint32_t ptrValue);
+void irInstStore(IRBasicBlock *bb, uint32_t ptrValue, uint32_t value);
 
 void printType(Type *type, FILE *f);
 const char *instructionTypeToString(int type);
