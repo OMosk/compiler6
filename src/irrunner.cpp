@@ -108,6 +108,9 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
   stack.len = 8 * 1024;
   stack.data = (char *)alloc(stack.len, 8/*alignment*/, 1); // Think through if we need to match 16 byte alignment as int amd64 convention
 
+  Array<bool> isIntegers = {};
+  Array<IRValue> argValues = {};
+
   InterpreterFrameData *currentFrame = NULL;
   {
     InterpreterFrameData *frame = (InterpreterFrameData *) stack.data;
@@ -124,11 +127,6 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
   }
 
   while (currentFrame) {
-    //IRInstruction *instruction = currentFrame->instructionIterator.next();
-    //if (!instruction) {
-    //  instruction = &currentFrame->block->terminator;
-    //}
-    //currentFrame->instruction = instruction;
     currentFrame->instruction = currentFrame->instructionIterator.next();
     if (!currentFrame->instruction) {
       currentFrame->instruction = &currentFrame->block->terminator;
@@ -169,15 +167,17 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
           }
         }
         int argsCount = currentFrame->instruction->call.args.len;
-        bool isIntegers[currentFrame->instruction->call.args.len];
-        IRValue values[currentFrame->instruction->call.args.len];
+
+        resize(&isIntegers, argsCount);
+        resize(&argValues, argsCount);
+
         for (int argNo = 0; argNo < currentFrame->instruction->call.args.len; ++argNo) {
-          values[argNo] = registers[currentFrame->registersOffset + currentFrame->instruction->call.args[argNo]];
+          argValues[argNo] = registers[currentFrame->registersOffset + currentFrame->instruction->call.args[argNo]];
           isIntegers[argNo] = (currentFrame->fn->values[currentFrame->instruction->call.args[argNo]].type->flags & TYPE_FLAG_FLOATING_POINT) == 0;
         }
         bool returnIsFloat = callee->retType->flags&TYPE_FLAG_FLOATING_POINT;
         double start = now();
-        IRValue result = trampoline_generator_with_ptr3(callee->ptr, returnIsFloat, argsCount, values, isIntegers);
+        IRValue result = trampoline_generator_with_ptr3(callee->ptr, returnIsFloat, argsCount, argValues.data, isIntegers.data);
         double end = now();
         printf("Trampoline JIT + printf call took: %fsec\n", end - start);
         double start2  = now();
