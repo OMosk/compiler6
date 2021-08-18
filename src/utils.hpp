@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <time.h>
 
+#include <pthread.h>
+
 #define ARRLEN(x) (sizeof(x)/sizeof(x[0]))
 #define SIZEDARR(x) x, ARRLEN(x)
 
@@ -39,6 +41,9 @@ struct Str {
   bool eq(const char *s, size_t len) {
     if (this->len == len && memcmp(this->data, s, len) == 0) return true;
     return false;
+  }
+  bool eq(Str other) {
+    return eq(other.data, other.len);
   }
 };
 #define STR(LITERAL) (Str {(char *)LITERAL, sizeof(LITERAL)-1})
@@ -244,3 +249,5 @@ hash(unsigned char *str)
 */
 
 uint64_t alignAddressUpwards(uint64_t ptr, uint64_t alignment);
+
+Str concatAndNormalizePath(const char *curDirectory, const char *filename);

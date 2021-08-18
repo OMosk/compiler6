@@ -1,7 +1,71 @@
 #pragma once
 
+#include <pthread.h>
 #include <inttypes.h>
 #include "utils.hpp"
+#include "ast.hpp"
+
+
+struct Module; //Compiler
+
+struct ReadFileJob {
+  const char *filename;
+  Module *module;
+  Site *source;
+};
+
+struct ParsingJob {
+  const char *filename;
+  Str content;
+  Module *module;
+  Site *source;
+};
+
+struct TypecheckingFilePrepassJob {
+  ASTFile *file;
+  Module *module;
+};
+
+struct Job {
+  Job *next;
+
+  enum Kind { JOB_READ_FILE, JOB_PARSE_FILE, JOB_TYPECHECKING_FILE_PREPASS } kind;
+
+  union {
+    ReadFileJob read;
+    ParsingJob parsing;
+    TypecheckingFilePrepassJob typecheckingPrepass;
+  };
+
+};
+
+struct WorkerGroup {
+  pthread_mutex_t mutex;
+  pthread_cond_t cv;
+
+  Job head;
+
+  Job *tail;
+
+  Job freelist;
+};
+
+void runJobs(WorkerGroup *group);
+void handleJob(Job *job);
+
+WorkerGroup *startWorkerGroup(int n = 1);
+void postJob(WorkerGroup *group, Job job);
+
+extern WorkerGroup *ioWorkerGroup;
+extern WorkerGroup *tokenizationParsingWorkerGroup;
+extern WorkerGroup *typecheckingWorkerGroup;
+
+struct Module {
+  Str name;
+  Array<Str> absoluteFilenames;
+};
+void addFileToModule(Module *module, const char *curDirectory,  const char *filename, Site *source = NULL);
+
 
 struct NamedEntry {
   Str name;
@@ -52,4 +116,4 @@ extern Type *u64;
 extern Type *f32;
 extern Type *f64;
 
-Type *getPointerToType(Type *pointee);
+Type *getPointerType(Type *pointee);

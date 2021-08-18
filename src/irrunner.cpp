@@ -87,7 +87,10 @@ struct InterpreterFrameData {
   int registersOffset;
   int stackOffset;
   IRBasicBlock *block;
-  InstructionsBucketedArray::Iterator instructionIterator;
+
+  //InstructionsBucketedArray::Iterator instructionIterator;
+  int instructionIndex;
+
   IRInstruction *instruction;
   InterpreterFrameData *prevFrame;
 };
@@ -119,7 +122,8 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
     frame->registersOffset = 1;
     frame->stackOffset = sizeof(InterpreterFrameData);
     frame->block = entryFunction->init;
-    frame->instructionIterator = iterator(&entryFunction->init->instructions);
+    //frame->instructionIterator = iterator(&entryFunction->init->instructions);
+    frame->instructionIndex = 0;
     //TODO maybe combine with resize for arguments earlier
     resize(&registers, frame->registersOffset + entryFunction->valuesNumber);
 
@@ -127,15 +131,20 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
   }
 
   while (currentFrame) {
-    currentFrame->instruction = currentFrame->instructionIterator.next();
-    if (!currentFrame->instruction) {
+    if (currentFrame->instructionIndex >= currentFrame->block->instructions.len) {
+    //if (!currentFrame->instruction) {
       currentFrame->instruction = &currentFrame->block->terminator;
+    } else {
+      currentFrame->instruction
+        = currentFrame->block->instructions.data + currentFrame->instructionIndex;
+      currentFrame->instructionIndex++;
     }
 
     switch (currentFrame->instruction->type) {
     case INSTRUCTION_JUMP: {
       currentFrame->block = currentFrame->instruction->jump.block;
-      currentFrame->instructionIterator = iterator(&currentFrame->block->instructions);
+      //currentFrame->instructionIterator = iterator(&currentFrame->block->instructions);
+      currentFrame->instructionIndex = 0;
     } break;
 
     case INSTRUCTION_IADD: {
@@ -199,7 +208,7 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
         newFrame->stackOffset = currentFrame->stackOffset + sizeof(InterpreterFrameData);
         newFrame->prevFrame = currentFrame;
         newFrame->block = newFrame->fn->init;
-        newFrame->instructionIterator = iterator(&newFrame->block->instructions);
+        newFrame->instructionIndex++;
         currentFrame = newFrame;
 
         resize(&registers, currentFrame->registersOffset + entryFunction->valuesNumber);

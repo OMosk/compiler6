@@ -3,8 +3,10 @@
 #include "parser.hpp"
 #include "ir.hpp"
 #include "irrunner.hpp"
+#include "compiler.hpp"
 
 #include <unistd.h>
+#include <limits.h>
 
 #define USE_MMAP
 
@@ -14,8 +16,9 @@
 #endif
 #include <dlfcn.h>
 
-int main() {
-  initClock();
+int bootstrapTest();
+
+int main(int argc, char **argv) {
   size_t memory_size = 100 * 1024 * 1024;
 
 #ifndef USE_MMAP
@@ -33,9 +36,41 @@ int main() {
   printf("Memory: %p\n", memory);
 #endif
   initAllocator(&global, (char *)memory, memory_size);
+  initClock();
 
   printf("files cap = %d\n", files.cap);
 
+
+  #if 0
+  WorkerGroup *wg = startWorkerGroup(0);
+
+  ioWorkerGroup = wg;
+  tokenizationParsingWorkerGroup = wg;
+  typecheckingWorkerGroup = wg;
+
+
+  Module mainModule = {};
+  mainModule.name = STR("main");
+
+  char cwd[PATH_MAX + 1];
+  if (!getcwd(cwd, PATH_MAX + 1)) {
+    printf("getcwd failed: %s\n", strerror(errno));
+    abort();
+  }
+
+  //start process
+  addFileToModule(&mainModule, cwd, "./examples/lexer_test.lan");
+
+  runJobs(wg);
+  #else
+
+  bootstrapTest();
+  #endif
+
+  return 0;
+}
+
+int bootstrapTest() {
   auto start = now();
   FileReadResult file = readFile("./examples/lexer_test.lan");
   if (!file.ok) {
@@ -232,13 +267,6 @@ int main() {
     printf("constant returned %d\n", result.i32);
   }
 
-
-  /*{
-    auto start = now();
-    sleep(1);
-    auto end = now();
-    printf("Sleep %fsec\n", end - start);
-  }*/
 
   return 0;
 }

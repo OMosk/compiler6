@@ -101,7 +101,9 @@ IRFunction *createIRForeignFunction(IRHub *h, Str name, Str library, Array<Type 
 }
 
 IRBasicBlock *createIRBlock(IRFunction *fn, const char *name) {
-  IRBasicBlock *result = alloc_back(&fn->basicBlocks);
+  IRBasicBlock *result = ALLOC(IRBasicBlock);
+  append(&fn->basicBlocks, result);
+  //IRBasicBlock *result = alloc_back(&fn->basicBlocks);
   *result = {};
   result->fn = fn;
 
@@ -111,19 +113,22 @@ IRBasicBlock *createIRBlock(IRFunction *fn, const char *name) {
   return result;
 }
 
-IRInstruction *createIRInstruction(IRBasicBlock *bb, uint16_t type) {
+IRInstruction *createIRInstruction(IRBasicBlock *bb, uint16_t type, Site site) {
   if (bb->terminator.type) {
     ASSERT(false, "Attempting to insert instruction into block that already has terminator");
   }
 
-  IRInstruction *inst = alloc_back(&bb->instructions);
+  //IRInstruction *inst = alloc_back(&bb->instructions);
+  append(&bb->instructions, {});
+  IRInstruction *inst = bb->instructions.data + (bb->instructions.len - 1);
   *inst = {};
 
   inst->type = type;
+  inst->site = site;
   return inst;
 }
 
-IRInstruction *createIRTerminatorInstruction(IRBasicBlock *bb, uint16_t type) {
+IRInstruction *createIRTerminatorInstruction(IRBasicBlock *bb, uint16_t type, Site site) {
   if (bb->terminator.type) {
     ASSERT(false, "Attempting to insert instruction into block that already has terminator");
   }
@@ -137,23 +142,23 @@ uint32_t createIRValue(IRFunction *fn) {
   return fn->valuesNumber++;
 }
 
-void irInstJump(IRBasicBlock *bb, IRBasicBlock *to) {
-  IRInstruction *jump = createIRTerminatorInstruction(bb, INSTRUCTION_JUMP);
+void irInstJump(IRBasicBlock *bb, IRBasicBlock *to, Site site) {
+  IRInstruction *jump = createIRTerminatorInstruction(bb, INSTRUCTION_JUMP, site);
   jump->jump.block = to;
 }
 
-void irInstRetVoid(IRBasicBlock *bb) {
-  IRInstruction *ret = createIRTerminatorInstruction(bb, INSTRUCTION_RET_VOID);
+void irInstRetVoid(IRBasicBlock *bb, Site site) {
+  IRInstruction *ret = createIRTerminatorInstruction(bb, INSTRUCTION_RET_VOID, site);
 }
 
 
-void irInstRet(IRBasicBlock *bb, uint32_t op1) {
-  IRInstruction *ret = createIRTerminatorInstruction(bb, INSTRUCTION_RET);
+void irInstRet(IRBasicBlock *bb, uint32_t op1, Site site) {
+  IRInstruction *ret = createIRTerminatorInstruction(bb, INSTRUCTION_RET, site);
   ret->retValue = op1;
 }
 
-uint32_t irInstIAdd(IRBasicBlock *bb, uint32_t op1, uint32_t op2) {
-  IRInstruction *add = createIRInstruction(bb, INSTRUCTION_IADD);
+uint32_t irInstIAdd(IRBasicBlock *bb, uint32_t op1, uint32_t op2, Site site) {
+  IRInstruction *add = createIRInstruction(bb, INSTRUCTION_IADD, site);
 
   ASSERT(bb->fn->values[op1].type == bb->fn->values[op2].type, "Mismatched types");
   add->binaryOp.op1 = op1;
@@ -169,8 +174,8 @@ uint32_t irInstIAdd(IRBasicBlock *bb, uint32_t op1, uint32_t op2) {
 //  i->setArg.op = op;
 //}
 
-uint32_t irInstCall(IRBasicBlock *bb, IRFunction *callee, Array<uint32_t> args) {
-  IRInstruction *call = createIRInstruction(bb, INSTRUCTION_CALL);
+uint32_t irInstCall(IRBasicBlock *bb, IRFunction *callee, Array<uint32_t> args, Site site) {
+  IRInstruction *call = createIRInstruction(bb, INSTRUCTION_CALL, site);
   call->call.fn = callee;
   call->call.ret = createIRValue(bb->fn);
   call->call.args = args;
@@ -178,10 +183,10 @@ uint32_t irInstCall(IRBasicBlock *bb, IRFunction *callee, Array<uint32_t> args) 
   return call->call.ret;
 }
 
-uint32_t irInstConstant(IRBasicBlock *bb, Type *type, IRValue v) {
+uint32_t irInstConstant(IRBasicBlock *bb, Type *type, IRValue v, Site site) {
   uint32_t result = createIRValue(bb->fn);
   bb->fn->values[result].type = type;
-  IRInstruction *constant = createIRInstruction(bb, INSTRUCTION_CONSTANT);
+  IRInstruction *constant = createIRInstruction(bb, INSTRUCTION_CONSTANT, site);
   constant->constantInit.constant = v;
   constant->constantInit.valueIndex = result;
 
@@ -189,29 +194,29 @@ uint32_t irInstConstant(IRBasicBlock *bb, Type *type, IRValue v) {
 }
 
 
-uint32_t irInstAlloca(IRBasicBlock *bb, Type *type) {
+uint32_t irInstAlloca(IRBasicBlock *bb, Type *type, Site site) {
   uint32_t result = createIRValue(bb->fn);
-  bb->fn->values[result].type = getPointerToType(type);
-  IRInstruction *alloca = createIRInstruction(bb, INSTRUCTION_ALLOCA);
+  bb->fn->values[result].type = getPointerType(type);
+  IRInstruction *alloca = createIRInstruction(bb, INSTRUCTION_ALLOCA, site);
   alloca->alloca.type = type;
   alloca->alloca.valueIndex = result;
 
   return result;
 }
 
-uint32_t irInstLoad(IRBasicBlock *bb, Type *type, uint32_t ptrValue) {
+uint32_t irInstLoad(IRBasicBlock *bb, Type *type, uint32_t ptrValue, Site site) {
   uint32_t result = createIRValue(bb->fn);
   ASSERT(type->size <= 8, "Load works only for primitive types");
   bb->fn->values[result].type = type;
-  IRInstruction *load = createIRInstruction(bb, INSTRUCTION_LOAD);
+  IRInstruction *load = createIRInstruction(bb, INSTRUCTION_LOAD, site);
   load->load.ret = result;
   load->load.from = ptrValue;
 
   return result;
 }
 
-void irInstStore(IRBasicBlock *bb, uint32_t ptrValue, uint32_t value) {
-  IRInstruction *store = createIRInstruction(bb, INSTRUCTION_STORE);
+void irInstStore(IRBasicBlock *bb, uint32_t ptrValue, uint32_t value, Site site) {
+  IRInstruction *store = createIRInstruction(bb, INSTRUCTION_STORE, site);
   store->store.to = ptrValue;
   store->store.value = value;
 }
@@ -227,7 +232,13 @@ const char *instructionTypeToString(int type) {
 
 
 void printInstruction(IRFunction *fn, IRInstruction *instruction, FILE *f) {
-  fprintf(f, "  %8p: %3d %-25s|", instruction, instruction->type, instructionTypeToString(instruction->type));
+  fprintf(f, "  %8p: %3d %-10s|", instruction, instruction->type, instructionTypeToString(instruction->type) + 12);
+  //+12 skips INSTRUCTION_
+  if (instruction->site.file) {
+    fprintf(f, "%15s:%3d| ", files[instruction->site.line].relative_path, instruction->site.line);
+  } else {
+    fprintf(f, "%15s:%3d| ", "(internal)", 0);
+  }
   switch (instruction->type) {
     case INSTRUCTION_JUMP: {
       fprintf(f, " jump to %s(%p)\n",
@@ -237,7 +248,7 @@ void printInstruction(IRFunction *fn, IRInstruction *instruction, FILE *f) {
       fprintf(f, " \n");
     } break;
     case INSTRUCTION_RET: {
-      fprintf(f, " v%u\n", instruction->retValue);
+      fprintf(f, " ret v%u\n", instruction->retValue);
     } break;
     case INSTRUCTION_IADD: {
       fprintf(f, " ");
@@ -290,7 +301,8 @@ void printInstruction(IRFunction *fn, IRInstruction *instruction, FILE *f) {
     } break;
 
     case INSTRUCTION_STORE: {
-      fprintf(f, " store value v%u to address v%u\n", instruction->store.value, instruction->store.to);
+      //fprintf(f, " store value v%u to address v%u\n", instruction->store.value, instruction->store.to);
+      fprintf(f, " *v%u = v%u\n", instruction->store.to, instruction->store.value);
     } break;
 
     case INSTRUCTION_LOAD: {
@@ -401,13 +413,17 @@ void printFunction(IRFunction *fn, FILE *f) {
     }
   }
   #else
-  auto bucketIt = iterator(&fn->basicBlocks);
-  for (IRBasicBlock *block = bucketIt.next(); block != NULL; block = bucketIt.next()) {
+  for (int i = 0; i < fn->basicBlocks.len; ++i) {
+  //auto bucketIt = iterator(&fn->basicBlocks);
+  //for (IRBasicBlock *block = bucketIt.next(); block != NULL; block = bucketIt.next()) {
+    IRBasicBlock *block = fn->basicBlocks[i];
     fprintf(f, "\n");
     fprintf(f, "%s(%p):\n", block->name, block);
 
-    auto instructionIt = iterator(&block->instructions);
-    for (IRInstruction *instruction = instructionIt.next(); instruction != NULL; instruction = instructionIt.next()) {
+    //auto instructionIt = iterator(&block->instructions);
+    //for (IRInstruction *instruction = instructionIt.next(); instruction != NULL; instruction = instructionIt.next()) {
+    for (int i = 0; i < block->instructions.len; ++i) {
+      IRInstruction *instruction = block->instructions.data + i;
       printInstruction(fn, instruction, f);
     }
 

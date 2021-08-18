@@ -1,5 +1,10 @@
 #include "utils.hpp"
 
+#include <errno.h>
+#include <string.h>
+#include <strings.h>
+#include <limits.h>
+
 Allocator global;
 
 void initAllocator(Allocator *a, char *start, int64_t size) {
@@ -218,4 +223,22 @@ uint64_t alignAddressUpwards(uint64_t ptr, uint64_t alignment) {
   ASSERT(result % alignment == 0, "Failed to align");
 
   return result;
+}
+
+
+Str concatAndNormalizePath(const char *curDirectory, const char *filename) {
+  Str fullPath = SPrintf("%s/%s", curDirectory, filename);
+  Str normalizedFullPath = {};
+  normalizedFullPath.len = PATH_MAX + 1;
+  normalizedFullPath.data = ALLOC_ARRAY(char, PATH_MAX + 1);
+
+  const char *result = realpath(fullPath.data, normalizedFullPath.data);
+  if (!result) {
+    printf("realpath failed: %s\n", strerror(errno));
+    abort();
+  }
+
+  normalizedFullPath.len = strlen(result);
+
+  return normalizedFullPath;
 }
