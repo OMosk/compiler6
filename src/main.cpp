@@ -121,8 +121,8 @@ int bootstrapTest() {
 
   {
     IRFunction *fn = createIRFunction(&hub, STR("empty_fn"));
-    irInstJump(fn->init, fn->exit);
-    irInstRetVoid(fn->exit);
+    irInstRetVoid(fn, fn->init);
+    runIR(fn, {});
   }
 
   IRFunction *add = NULL;
@@ -131,13 +131,11 @@ int bootstrapTest() {
     append(&args, i32);
     append(&args, i32);
     add = createIRFunction(&hub, STR("add"), args, i32);
-    IRBasicBlock *main = createIRBlock(add, "main");
-    irInstJump(add->init, main);
+    IRBasicBlockIndex main = createIRBlock(add, "main");
+    irInstJump(add, add->init, main);
 
-    uint32_t result = irInstIAdd(main, 0, 1);
-    irInstJump(main, add->exit);
-
-    irInstRet(add->exit, result);
+    uint32_t result = irInstIAdd(add, main, 0, 1);
+    irInstRet(add, main, result);
 
     #if 1
     double start = now();
@@ -159,8 +157,8 @@ int bootstrapTest() {
     append(&args, i32);
     append(&args, i32);
     add3 = createIRFunction(&hub, STR("add3"), args, i32);
-    IRBasicBlock *main = createIRBlock(add3, "main");
-    irInstJump(add3->init, main);
+    IRBasicBlockIndex main = createIRBlock(add3, "main");
+    irInstJump(add3, add3->init, main);
 
     Array<uint32_t> argValues = {};
     append(&argValues, 0u);
@@ -168,17 +166,15 @@ int bootstrapTest() {
 
     //setArg(main, 0, 0);
     //setArg(main, 1, 1);
-    uint32_t sum1 = irInstCall(main, add, argValues);
+    uint32_t sum1 = irInstCall(add3, main, add, argValues);
     argValues = {};
     append(&argValues, sum1);
     append(&argValues, 2u);
     //setArg(main, 0, sum1);
     //setArg(main, 1, 2);
-    uint32_t sum2 = irInstCall(main, add, argValues);
+    uint32_t sum2 = irInstCall(add3, main, add, argValues);
 
-    irInstJump(main, add3->exit);
-
-    irInstRet(add3->exit, sum2);
+    irInstRet(add3, main, sum2);
 
     #if 1
     {
@@ -207,9 +203,8 @@ int bootstrapTest() {
     {
       Array<uint32_t> argValues = {};
       append(&argValues, 0u);
-      uint32_t retValue = irInstCall(fnThatUsesPrintf->init, irPrintf, argValues);
-      irInstJump(fnThatUsesPrintf->init, fnThatUsesPrintf->exit);
-      irInstRet(fnThatUsesPrintf->exit, retValue);
+      uint32_t retValue = irInstCall(fnThatUsesPrintf, fnThatUsesPrintf->init, irPrintf, argValues);
+      irInstRet(fnThatUsesPrintf, fnThatUsesPrintf->init, retValue);
     }
 
   }
@@ -217,25 +212,23 @@ int bootstrapTest() {
   IRFunction *fWithConstants = NULL;
   {
     IRFunction *f = createIRFunction(&hub, STR("constantTest"), {}, i32);
-    irInstJump(f->init, f->exit);
-    uint32_t valueIndex = irInstConstant(f->exit, i32, valueI32(12345));
-    irInstConstant(f->exit, i64, valueI64(-1));
-    irInstConstant(f->exit, u64, valueU64((uint64_t)-1));
-    irInstConstant(f->exit, f32, valueF32(3.14));
-    irInstConstant(f->exit, f64, valueF64(6.28));
-    irInstRet(f->exit, valueIndex);
+    uint32_t valueIndex = irInstConstant(f, f->init, i32, valueI32(12345));
+    irInstConstant(f, f->init, i64, valueI64(-1));
+    irInstConstant(f, f->init, u64, valueU64((uint64_t)-1));
+    irInstConstant(f, f->init, f32, valueF32(3.14));
+    irInstConstant(f, f->init, f64, valueF64(6.28));
+    irInstRet(f, f->init, valueIndex);
 
     fWithConstants = f;
   }
 
   {
     IRFunction *f = createIRFunction(&hub, STR("allocaTest"), {}, u64);
-    irInstJump(f->init, f->exit);
-    uint32_t address = irInstAlloca(f->exit, u64);
-    uint32_t constant = irInstConstant(f->exit, u64, valueU64(12345678));
-    irInstStore(f->exit, address, constant);
-    uint32_t l = irInstLoad(f->exit, u64, address);
-    irInstRet(f->exit, l);
+    uint32_t address = irInstAlloca(f, f->init, u64);
+    uint32_t constant = irInstConstant(f, f->init, u64, valueU64(12345678));
+    irInstStore(f, f->init, address, constant);
+    uint32_t l = irInstLoad(f, f->init, u64, address);
+    irInstRet(f, f->init, l);
     IRValue value = runIR(f, {});
     ASSERT(value.u64 == 12345678, "Alloca/store/load fail");
     printf("Alloca, store, load passed\n");

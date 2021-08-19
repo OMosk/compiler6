@@ -37,7 +37,7 @@ IRValue valueF64(double v);
 IRValue valuePtr(void *v);
 
 
-struct IRBasicBlock;
+typedef uint32_t IRBasicBlockIndex;
 struct IRFunction;
 
 struct IRInstruction {
@@ -57,7 +57,7 @@ struct IRInstruction {
     uint32_t retValue;
 
     struct {
-      IRBasicBlock *block;
+      IRBasicBlockIndex block;
     } jump;
 
     struct {
@@ -116,23 +116,12 @@ enum IRInstructionType {
 
 typedef BucketedArray<IRInstruction, 8> InstructionsBucketedArray;
 
-struct IRBasicBlock {
-  const char *name;
-  IRFunction *fn;
-
-  //InstructionsBucketedArray instructions;
-  Array<IRInstruction> instructions;
-
-  IRInstruction terminator;
-};
-
 struct IRBasicBlock_ {
   uint32_t offset;
   uint32_t length;
   const char *name;
 };
 
-typedef uint32_t IRBasicBlockIndex;
 
 struct IRValueInfo {
   Type *type;
@@ -147,15 +136,12 @@ struct IRFunction {
   Str name;
   Type *retType;
 
-  IRBasicBlock *init;
-  IRBasicBlock *exit;
+  IRBasicBlockIndex init;
 
-  Array<IRBasicBlock *> basicBlocks;
-  //BucketedArray<IRBasicBlock, 8> basicBlocks;
   Array<IRValueInfo> values;
 
-  Array<IRBasicBlock_> basicBlocks_;
-  Array<IRInstruction> instructions_;
+  Array<IRBasicBlock_> basicBlocks;
+  Array<IRInstruction> instructions;
 
   int blockNameCounter;
   int argsNumber;
@@ -175,17 +161,17 @@ IRFunction *createIRFunction(IRHub *h, Str name, Array<Type *> args = {}, Type *
 
 IRFunction *createIRForeignFunction(IRHub *h, Str name, Str library, Array<Type *> args = {}, Type *retType = NULL, bool variadic = false);
 
-IRBasicBlock *createIRBlock(IRFunction *fn, const char *name = "");
+IRBasicBlockIndex createIRBlock(IRFunction *fn, const char *name = "");
 
-void irInstJump(IRBasicBlock *bb, IRBasicBlock *to, Site site = {});
-void irInstRetVoid(IRBasicBlock *bb, Site site = {});
-void irInstRet(IRBasicBlock *bb, uint32_t op1, Site site = {});
-uint32_t irInstIAdd(IRBasicBlock *bb, uint32_t op1, uint32_t op2, Site site = {});
-uint32_t irInstCall(IRBasicBlock *bb, IRFunction *callee, Array<uint32_t> args, Site site = {});
-uint32_t irInstConstant(IRBasicBlock *bb, Type *type, IRValue v, Site site = {});
-uint32_t irInstAlloca(IRBasicBlock *bb, Type *type, Site site = {});
-uint32_t irInstLoad(IRBasicBlock *bb, Type *type, uint32_t ptrValue, Site site = {});
-void irInstStore(IRBasicBlock *bb, uint32_t ptrValue, uint32_t value, Site site = {});
+void irInstJump(IRFunction *fn, IRBasicBlockIndex bb, IRBasicBlockIndex to, Site site = {});
+void irInstRetVoid(IRFunction *fn, IRBasicBlockIndex bb, Site site = {});
+void irInstRet(IRFunction *fn, IRBasicBlockIndex bb, uint32_t op1, Site site = {});
+uint32_t irInstIAdd(IRFunction *fn, IRBasicBlockIndex bb, uint32_t op1, uint32_t op2, Site site = {});
+uint32_t irInstCall(IRFunction *fn, IRBasicBlockIndex bb, IRFunction *callee, Array<uint32_t> args, Site site = {});
+uint32_t irInstConstant(IRFunction *fn, IRBasicBlockIndex bb, Type *type, IRValue v, Site site = {});
+uint32_t irInstAlloca(IRFunction *fn, IRBasicBlockIndex bb, Type *type, Site site = {});
+uint32_t irInstLoad(IRFunction *fn, IRBasicBlockIndex bb, Type *type, uint32_t ptrValue, Site site = {});
+void irInstStore(IRFunction *fn, IRBasicBlockIndex bb, uint32_t ptrValue, uint32_t value, Site site = {});
 
 void printType(Type *type, FILE *f);
 const char *instructionTypeToString(int type);

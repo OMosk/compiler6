@@ -86,9 +86,7 @@ struct InterpreterFrameData {
   IRFunction *fn;
   int registersOffset;
   int stackOffset;
-  IRBasicBlock *block;
 
-  //InstructionsBucketedArray::Iterator instructionIterator;
   int instructionIndex;
 
   IRInstruction *instruction;
@@ -121,7 +119,6 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
     frame->fn = entryFunction;
     frame->registersOffset = 1;
     frame->stackOffset = sizeof(InterpreterFrameData);
-    frame->block = entryFunction->init;
     //frame->instructionIterator = iterator(&entryFunction->init->instructions);
     frame->instructionIndex = 0;
     //TODO maybe combine with resize for arguments earlier
@@ -131,20 +128,13 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
   }
 
   while (currentFrame) {
-    if (currentFrame->instructionIndex >= currentFrame->block->instructions.len) {
-    //if (!currentFrame->instruction) {
-      currentFrame->instruction = &currentFrame->block->terminator;
-    } else {
-      currentFrame->instruction
-        = currentFrame->block->instructions.data + currentFrame->instructionIndex;
-      currentFrame->instructionIndex++;
-    }
+    currentFrame->instruction = &currentFrame->fn->instructions[currentFrame->instructionIndex];
+    currentFrame->instructionIndex++;
 
     switch (currentFrame->instruction->type) {
     case INSTRUCTION_JUMP: {
-      currentFrame->block = currentFrame->instruction->jump.block;
-      //currentFrame->instructionIterator = iterator(&currentFrame->block->instructions);
-      currentFrame->instructionIndex = 0;
+      currentFrame->instructionIndex
+        = currentFrame->fn->basicBlocks[currentFrame->instruction->jump.block].offset;
     } break;
 
     case INSTRUCTION_IADD: {
@@ -207,8 +197,7 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
         newFrame->registersOffset = currentFrame->registersOffset + currentFrame->fn->values.len + 1;
         newFrame->stackOffset = currentFrame->stackOffset + sizeof(InterpreterFrameData);
         newFrame->prevFrame = currentFrame;
-        newFrame->block = newFrame->fn->init;
-        newFrame->instructionIndex++;
+        //newFrame->instructionIndex++; //why?
         currentFrame = newFrame;
 
         resize(&registers, currentFrame->registersOffset + entryFunction->values.len);
@@ -261,7 +250,7 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
     } break;
 
     default:
-      printf("%d %s instruction not implemented\n", currentFrame->instruction->type, instructionTypeToString(currentFrame->instruction->type));
+      printf("instruction[%d] %d %s instruction not implemented\n", currentFrame->instructionIndex, currentFrame->instruction->type, instructionTypeToString(currentFrame->instruction->type));
     NOT_IMPLEMENTED;
     }
 
