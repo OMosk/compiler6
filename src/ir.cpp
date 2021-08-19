@@ -196,10 +196,15 @@ uint32_t irInstIAdd(IRFunction *fn, IRBasicBlockIndex bIndex, uint32_t op1, uint
 //}
 
 uint32_t irInstCall(IRFunction *fn, IRBasicBlockIndex bIndex, IRFunction *callee, Array<uint32_t> args, Site site) {
+  for (int i = 0; i < args.len; ++i) {
+    IRInstruction *push = createIRInstruction(fn, bIndex, INSTRUCTION_PUSH_ARG, site);
+    push->arg.argValue = args[i];
+  }
   IRInstruction *call = createIRInstruction(fn, bIndex, INSTRUCTION_CALL, site);
   call->call.fn = callee;
   call->call.ret = createIRValue(fn);
-  call->call.args = args;
+  call->call.argsNumber = args.len;
+  //call->call.args = args;
   fn->values[call->call.ret].type = callee->retType;
   return call->call.ret;
 }
@@ -266,7 +271,7 @@ void printInstruction(IRFunction *fn, IRInstruction *instruction, int index, FIL
         fn->basicBlocks[instruction->jump.block].name, instruction->jump.block);
     } break;
     case INSTRUCTION_RET_VOID: {
-      fprintf(f, " \n");
+      fprintf(f, " ret\n");
     } break;
     case INSTRUCTION_RET: {
       fprintf(f, " ret v%u\n", instruction->retValue);
@@ -277,16 +282,18 @@ void printInstruction(IRFunction *fn, IRInstruction *instruction, int index, FIL
       fprintf(f, " v%u = iadd v%u, v%u\n", instruction->binaryOp.ret, instruction->binaryOp.op1, instruction->binaryOp.op2);
     } break;
 
-    //case INSTRUCTION_SET_ARG: {
-    //  fprintf(f, " set_arg arg[%u] = v%u\n", instruction->setArg.argNo, instruction->setArg.op);
-    //} break;
+    case INSTRUCTION_PUSH_ARG: {
+      fprintf(f, " push_arg v%u\n", instruction->arg.argValue);
+    } break;
 
     case INSTRUCTION_CALL: {
       fprintf(f, " v%u = call %p %.*s (", instruction->call.ret, instruction->call.fn, (int)instruction->call.fn->name.len,
         instruction->call.fn->name.data);
-      for (int i = 0; i < instruction->call.args.len; ++i) {
+      int argsNumber = instruction->call.argsNumber;
+      for (int i = 0; i < argsNumber; ++i) {
         if (i != 0) fprintf(f, ", ");
-        fprintf(f, "v%u", instruction->call.args[i]);
+        //fprintf(f, "v%u", instruction->call.args[i]);
+        fprintf(f, "v%u", fn->instructions[index - argsNumber + i].arg.argValue);
       }
       fprintf(f, ")\n");
     } break;

@@ -153,6 +153,9 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
       }
     break;
 
+    case INSTRUCTION_PUSH_ARG: {
+    } break;
+
     case INSTRUCTION_CALL: {
       IRFunction *callee = currentFrame->instruction->call.fn;
       if (callee->flags & FUNCTION_FLAG_EXTERNAL) {
@@ -164,14 +167,18 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
             NOT_IMPLEMENTED;
           }
         }
-        int argsCount = currentFrame->instruction->call.args.len;
+        int argsCount = currentFrame->instruction->call.argsNumber;
 
         resize(&isIntegers, argsCount);
         resize(&argValues, argsCount);
 
-        for (int argNo = 0; argNo < currentFrame->instruction->call.args.len; ++argNo) {
-          argValues[argNo] = registers[currentFrame->registersOffset + currentFrame->instruction->call.args[argNo]];
-          isIntegers[argNo] = (currentFrame->fn->values[currentFrame->instruction->call.args[argNo]].type->flags & TYPE_FLAG_FLOATING_POINT) == 0;
+        for (int argNo = 0; argNo < argsCount; ++argNo) {
+          uint32_t valueIndex
+            = currentFrame->fn->instructions[
+                currentFrame->instructionIndex - 1 - argsCount + argNo].arg.argValue;
+
+          argValues[argNo] = registers[currentFrame->registersOffset + valueIndex];
+          isIntegers[argNo] = (currentFrame->fn->values[valueIndex].type->flags & TYPE_FLAG_FLOATING_POINT) == 0;
         }
         bool returnIsFloat = callee->retType->flags&TYPE_FLAG_FLOATING_POINT;
         double start = now();
@@ -184,9 +191,13 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
         printf("Regular          printf call took: %fsec\n", end2 - start2);
         registers[currentFrame->registersOffset + currentFrame->instruction->call.ret] = result;
       } else {
-        ensureAtLeast(&registers, currentFrame->registersOffset + currentFrame->fn->values.len + 1 + currentFrame->instruction->call.args.len); // return register + args
-        for (int argNo = 0; argNo < currentFrame->instruction->call.args.len; ++argNo) {
-          registers[currentFrame->registersOffset + currentFrame->fn->values.len + 1 + argNo] = registers[currentFrame->registersOffset + currentFrame->instruction->call.args[argNo]];
+        ensureAtLeast(&registers, currentFrame->registersOffset + currentFrame->fn->values.len + 1 + currentFrame->instruction->call.argsNumber); // return register + args
+        int argsCount = currentFrame->instruction->call.argsNumber;
+        for (int argNo = 0; argNo < argsCount; ++argNo) {
+          uint32_t valueIndex
+            = currentFrame->fn->instructions[
+                currentFrame->instructionIndex - 1 - argsCount + argNo].arg.argValue;
+          registers[currentFrame->registersOffset + currentFrame->fn->values.len + 1 + argNo] = registers[currentFrame->registersOffset + valueIndex];
         }
         currentFrame->stackOffset = alignAddressUpwards(currentFrame->stackOffset, alignof(InterpreterFrameData));
         ASSERT(currentFrame->stackOffset + sizeof(InterpreterFrameData) < stack.len, "interpreter stack overflow on call instruction");

@@ -49,11 +49,6 @@ struct IRInstruction {
       uint32_t op2;
     } binaryOp;
 
-    //struct {
-    //  uint32_t argNo;
-    //  uint32_t op;
-    //} setArg;
-
     uint32_t retValue;
 
     struct {
@@ -61,9 +56,13 @@ struct IRInstruction {
     } jump;
 
     struct {
+      uint32_t argValue;
+    } arg;
+
+    struct {
       IRFunction *fn;
       uint32_t ret;
-      Array<uint32_t> args;
+      uint32_t argsNumber;
     } call;
 
     struct {
@@ -87,9 +86,8 @@ struct IRInstruction {
     } store;
 
   };
-  uint16_t type;
-
   Site site;
+  uint16_t type;
 };
 
 #define INSTRUCTIONS \
@@ -98,7 +96,7 @@ struct IRInstruction {
   XX(INSTRUCTION_RET_VOID) \
   XX(INSTRUCTION_RET) \
   XX(INSTRUCTION_IADD) \
-  XX(INSTRUCTION_SET_ARG) \
+  XX(INSTRUCTION_PUSH_ARG) \
   XX(INSTRUCTION_CALL) \
   XX(INSTRUCTION_CONSTANT) \
   XX(INSTRUCTION_ALLOCA) \
