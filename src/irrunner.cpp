@@ -125,7 +125,7 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
     //frame->instructionIterator = iterator(&entryFunction->init->instructions);
     frame->instructionIndex = 0;
     //TODO maybe combine with resize for arguments earlier
-    resize(&registers, frame->registersOffset + entryFunction->valuesNumber);
+    resize(&registers, frame->registersOffset + entryFunction->values.len);
 
     currentFrame = frame;
   }
@@ -195,23 +195,23 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
         printf("Regular          printf call took: %fsec\n", end2 - start2);
         registers[currentFrame->registersOffset + currentFrame->instruction->call.ret] = result;
       } else {
-        ensureAtLeast(&registers, currentFrame->registersOffset + currentFrame->fn->valuesNumber + 1 + currentFrame->instruction->call.args.len); // return register + args
+        ensureAtLeast(&registers, currentFrame->registersOffset + currentFrame->fn->values.len + 1 + currentFrame->instruction->call.args.len); // return register + args
         for (int argNo = 0; argNo < currentFrame->instruction->call.args.len; ++argNo) {
-          registers[currentFrame->registersOffset + currentFrame->fn->valuesNumber + 1 + argNo] = registers[currentFrame->registersOffset + currentFrame->instruction->call.args[argNo]];
+          registers[currentFrame->registersOffset + currentFrame->fn->values.len + 1 + argNo] = registers[currentFrame->registersOffset + currentFrame->instruction->call.args[argNo]];
         }
         currentFrame->stackOffset = alignAddressUpwards(currentFrame->stackOffset, alignof(InterpreterFrameData));
         ASSERT(currentFrame->stackOffset + sizeof(InterpreterFrameData) < stack.len, "interpreter stack overflow on call instruction");
         InterpreterFrameData *newFrame = (InterpreterFrameData *)(stack.data + currentFrame->stackOffset);
         *newFrame = {};
         newFrame->fn = currentFrame->instruction->call.fn;
-        newFrame->registersOffset = currentFrame->registersOffset + currentFrame->fn->valuesNumber + 1;
+        newFrame->registersOffset = currentFrame->registersOffset + currentFrame->fn->values.len + 1;
         newFrame->stackOffset = currentFrame->stackOffset + sizeof(InterpreterFrameData);
         newFrame->prevFrame = currentFrame;
         newFrame->block = newFrame->fn->init;
         newFrame->instructionIndex++;
         currentFrame = newFrame;
 
-        resize(&registers, currentFrame->registersOffset + entryFunction->valuesNumber);
+        resize(&registers, currentFrame->registersOffset + entryFunction->values.len);
       }
     } break;
 
@@ -270,7 +270,7 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
     handle_ret:
     if (currentFrame) {
       if (currentFrame->instruction->type == INSTRUCTION_CALL) {
-        registers[currentFrame->registersOffset + currentFrame->instruction->call.ret] = registers[currentFrame->registersOffset + currentFrame->fn->valuesNumber];
+        registers[currentFrame->registersOffset + currentFrame->instruction->call.ret] = registers[currentFrame->registersOffset + currentFrame->fn->values.len];
       }
     }
   }

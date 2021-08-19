@@ -127,9 +127,12 @@ struct IRBasicBlock {
 };
 
 struct IRBasicBlock_ {
-  uint16_t offset;
-  uint16_t length;
+  uint32_t offset;
+  uint32_t length;
+  const char *name;
 };
+
+typedef uint32_t IRBasicBlockIndex;
 
 struct IRValueInfo {
   Type *type;
@@ -148,12 +151,13 @@ struct IRFunction {
   IRBasicBlock *exit;
 
   Array<IRBasicBlock *> basicBlocks;
-  Array<IRBasicBlock_> basicBlocks_;
   //BucketedArray<IRBasicBlock, 8> basicBlocks;
   Array<IRValueInfo> values;
 
+  Array<IRBasicBlock_> basicBlocks_;
+  Array<IRInstruction> instructions_;
+
   int blockNameCounter;
-  int valuesNumber;
   int argsNumber;
 
   uint16_t flags;

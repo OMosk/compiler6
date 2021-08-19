@@ -80,7 +80,7 @@ IRFunction *createIRFunction(IRHub *h, Str name, Array<Type *> args, Type *retTy
     IRValueInfo value = {};
     value.type = args[i];
     fn->values[i] = value;
-    fn->valuesNumber++;
+    //fn->valuesNumber++;
   }
   #endif
   fn->retType = retType;
@@ -138,8 +138,11 @@ IRInstruction *createIRTerminatorInstruction(IRBasicBlock *bb, uint16_t type, Si
 }
 
 uint32_t createIRValue(IRFunction *fn) {
+  uint32_t valueNumber = fn->values.len;
   append(&fn->values, {});
-  return fn->valuesNumber++;
+  //uint32_t valueNumber = fn->valuesNumber++;
+  //ASSERT(fn->valuesNumber == fn->values.len, "valuesNumber is in sync with fn->values.len");
+  return valueNumber;
 }
 
 void irInstJump(IRBasicBlock *bb, IRBasicBlock *to, Site site) {
