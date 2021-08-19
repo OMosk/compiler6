@@ -126,6 +126,11 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
     currentFrame = frame;
   }
 
+#define REG_ABS(IDX) (registers[IDX])
+#define REG(IDX) (REG_ABS(currentFrame->registersOffset + IDX))
+#define INST (currentFrame->instruction)
+#define VALUES (currentFrame->fn->values)
+
   while (currentFrame) {
     currentFrame->instruction = &currentFrame->fn->instructions[currentFrame->instructionIndex];
     currentFrame->instructionIndex++;
@@ -133,23 +138,21 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
     switch (currentFrame->instruction->type) {
     case INSTRUCTION_JUMP: {
       currentFrame->instructionIndex
-        = currentFrame->fn->basicBlocks[currentFrame->instruction->jump.block].offset;
+        = currentFrame->fn->basicBlocks[INST->jump.block].offset;
     } break;
 
     case INSTRUCTION_IADD: {
-     registers[currentFrame->registersOffset + currentFrame->instruction->binaryOp.ret].u64
-       = registers[currentFrame->registersOffset + currentFrame->instruction->binaryOp.op1].u64 +
-         registers[currentFrame->registersOffset + currentFrame->instruction->binaryOp.op2].u64;
+      REG(INST->binaryOp.ret).u64 = REG(INST->binaryOp.op1).u64 + REG(INST->binaryOp.op2).u64;
     } break;
 
     case INSTRUCTION_RET:
-      registers[currentFrame->registersOffset - 1] = registers[currentFrame->registersOffset + currentFrame->instruction->retValue];
+      REG(-1) = REG(INST->retValue);
       /*fallthrough*/
     case INSTRUCTION_RET_VOID:
       currentFrame = currentFrame->prevFrame;
       if (currentFrame) {
-        ASSERT(currentFrame->instruction->type == INSTRUCTION_CALL, "on return instruction is not CALL");
-        registers[currentFrame->registersOffset + currentFrame->instruction->call.ret] = registers[currentFrame->registersOffset + currentFrame->fn->values.len];
+        ASSERT(INST->type == INSTRUCTION_CALL, "on return instruction is not CALL");
+        REG(INST->call.ret) = REG(VALUES.len);
       }
     break;
 
@@ -167,7 +170,7 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
             NOT_IMPLEMENTED;
           }
         }
-        int argsCount = currentFrame->instruction->call.argsNumber;
+        int argsCount = INST->call.argsNumber;
 
         resize(&isIntegers, argsCount);
         resize(&argValues, argsCount);
@@ -177,10 +180,10 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
             = currentFrame->fn->instructions[
                 currentFrame->instructionIndex - 1 - argsCount + argNo].arg.argValue;
 
-          argValues[argNo] = registers[currentFrame->registersOffset + valueIndex];
-          isIntegers[argNo] = (currentFrame->fn->values[valueIndex].type->flags & TYPE_FLAG_FLOATING_POINT) == 0;
+          argValues[argNo] = REG(valueIndex);
+          isIntegers[argNo] = (VALUES[valueIndex].type->flags & TYPE_FLAG_FLOATING_POINT) == 0;
         }
-        bool returnIsFloat = callee->retType->flags&TYPE_FLAG_FLOATING_POINT;
+        bool returnIsFloat = callee->retType->flags & TYPE_FLAG_FLOATING_POINT;
         double start = now();
         IRValue result = trampoline_generator_with_ptr3(callee->ptr, returnIsFloat, argsCount, argValues.data, isIntegers.data);
         double end = now();
@@ -189,22 +192,25 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
         printf("Hello world\n");
         double end2 = now();
         printf("Regular          printf call took: %fsec\n", end2 - start2);
-        registers[currentFrame->registersOffset + currentFrame->instruction->call.ret] = result;
+        REG(INST->call.ret) = result;
       } else {
-        ensureAtLeast(&registers, currentFrame->registersOffset + currentFrame->fn->values.len + 1 + currentFrame->instruction->call.argsNumber); // return register + args
+        ensureAtLeast(&registers, currentFrame->registersOffset + VALUES.len + 1 + INST->call.argsNumber); // return register + args
+
         int argsCount = currentFrame->instruction->call.argsNumber;
         for (int argNo = 0; argNo < argsCount; ++argNo) {
           uint32_t valueIndex
             = currentFrame->fn->instructions[
                 currentFrame->instructionIndex - 1 - argsCount + argNo].arg.argValue;
-          registers[currentFrame->registersOffset + currentFrame->fn->values.len + 1 + argNo] = registers[currentFrame->registersOffset + valueIndex];
+          REG(VALUES.len + 1 + argNo) = REG(valueIndex);
         }
+
         currentFrame->stackOffset = alignAddressUpwards(currentFrame->stackOffset, alignof(InterpreterFrameData));
         ASSERT(currentFrame->stackOffset + sizeof(InterpreterFrameData) < stack.len, "interpreter stack overflow on call instruction");
+
         InterpreterFrameData *newFrame = (InterpreterFrameData *)(stack.data + currentFrame->stackOffset);
         *newFrame = {};
         newFrame->fn = currentFrame->instruction->call.fn;
-        newFrame->registersOffset = currentFrame->registersOffset + currentFrame->fn->values.len + 1;
+        newFrame->registersOffset = currentFrame->registersOffset + VALUES.len + 1;
         newFrame->stackOffset = currentFrame->stackOffset + sizeof(InterpreterFrameData);
         newFrame->prevFrame = currentFrame;
         currentFrame = newFrame;
@@ -214,21 +220,21 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
     } break;
 
     case INSTRUCTION_CONSTANT: {
-      registers[currentFrame->registersOffset + currentFrame->instruction->constantInit.valueIndex] = currentFrame->instruction->constantInit.constant;
+      REG(INST->constantInit.valueIndex) = INST->constantInit.constant;
     } break;
 
     case INSTRUCTION_ALLOCA: {
       char *addr = stack.data + currentFrame->stackOffset;
-      ASSERT(currentFrame->stackOffset + currentFrame->instruction->alloca.type->size < stack.len, "interpreter stack overflow on alloca");
-      currentFrame->stackOffset = alignAddressUpwards(currentFrame->stackOffset, currentFrame->instruction->alloca.type->alignment);
-      currentFrame->stackOffset += currentFrame->instruction->alloca.type->size;
-      registers[currentFrame->registersOffset + currentFrame->instruction->alloca.valueIndex].ptr = addr;
+      ASSERT(currentFrame->stackOffset + INST->alloca.type->size < stack.len, "interpreter stack overflow on alloca");
+      currentFrame->stackOffset = alignAddressUpwards(currentFrame->stackOffset, INST->alloca.type->alignment);
+      currentFrame->stackOffset += INST->alloca.type->size;
+      REG(INST->alloca.valueIndex).ptr = addr;
     } break;
 
     case INSTRUCTION_STORE: {
-      IRValue data = registers[currentFrame->registersOffset + currentFrame->instruction->store.value];
-      uint32_t sizeBytes = currentFrame->fn->values[currentFrame->instruction->store.value].type->size;
-      IRValue *target = (IRValue *)registers[currentFrame->registersOffset + currentFrame->instruction->store.to].ptr;
+      IRValue data = REG(INST->store.value);
+      uint32_t sizeBytes = VALUES[INST->store.value].type->size;
+      IRValue *target = (IRValue *)REG(INST->store.to).ptr;
       switch (sizeBytes) {
         case 1: target->u8 = data.u8; break;
         case 2: target->u16 = data.u16; break;
@@ -242,10 +248,10 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
     } break;
 
     case INSTRUCTION_LOAD: {
-      IRValue *target = &registers[currentFrame->registersOffset + currentFrame->instruction->load.ret];
+      IRValue *target = &REG(INST->load.ret);
 
-      IRValue *data = (IRValue *) registers[currentFrame->registersOffset + currentFrame->instruction->load.from].ptr;
-      uint32_t sizeBytes = currentFrame->fn->values[currentFrame->instruction->load.ret].type->size;
+      IRValue *data = (IRValue *) REG(INST->load.from).ptr;
+      uint32_t sizeBytes = VALUES[INST->load.ret].type->size;
       switch (sizeBytes) {
         case 1: target->u8 = data->u8; break;
         case 2: target->u16 = data->u16; break;
@@ -259,13 +265,19 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
     } break;
 
     default:
-      printf("instruction[%d] %d %s instruction not implemented\n", currentFrame->instructionIndex, currentFrame->instruction->type, instructionTypeToString(currentFrame->instruction->type));
+      printf("instruction[%d] %d %s instruction not implemented\n",
+        currentFrame->instructionIndex, INST->type, instructionTypeToString(INST->type));
     NOT_IMPLEMENTED;
     }
 
     continue;
 
   }
+#undef REG_ABS
+#undef REG
+#undef INST
+#undef VALUES
+
 
   IRValue result = registers[0];
 
