@@ -380,25 +380,13 @@ void printFunction(IRFunction *fn, FILE *f) {
   printType(fn->retType, f);
   fprintf(f, "\n");
 
-  #if 0
-  {
-    auto it = iterator(&fn->values);
-    Value *value = it.next();
-    for (int i = 0; i < fn->argsNumber; ++i, value = it.next()) {
-      fprintf(f, "\t");
-      printType(value->type, f);
-      fprintf(f, " v%d = arg[%d] ", i, i);
-      fprintf(f, "\n");
-    }
-  }
-  #else
   for (int i = 0; i < fn->argsNumber; ++i) {
     fprintf(f, "  ");
     printType(fn->values[i].type, f);
     fprintf(f, " v%d = arg[%d] ", i, i);
     fprintf(f, "\n");
   }
-  #endif
+
   if (fn->flags & FUNCTION_FLAG_VARIADIC) {
     fprintf(f, "\t...(variadic)\n");
   }

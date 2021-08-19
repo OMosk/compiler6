@@ -107,7 +107,7 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
 
   Str stack = {};
   stack.len = 8 * 1024;
-  stack.data = (char *)alloc(stack.len, 8/*alignment*/, 1); // Think through if we need to match 16 byte alignment as int amd64 convention
+  stack.data = (char *)alloc(stack.len, 8/*alignment*/, 1); // Think through if we need to match 16 byte alignment as in amd64 convention
 
   Array<bool> isIntegers = {};
   Array<IRValue> argValues = {};
@@ -119,7 +119,6 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
     frame->fn = entryFunction;
     frame->registersOffset = 1;
     frame->stackOffset = sizeof(InterpreterFrameData);
-    //frame->instructionIterator = iterator(&entryFunction->init->instructions);
     frame->instructionIndex = 0;
     //TODO maybe combine with resize for arguments earlier
     resize(&registers, frame->registersOffset + entryFunction->values.len);
@@ -143,16 +142,16 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
          registers[currentFrame->registersOffset + currentFrame->instruction->binaryOp.op2].u64;
     } break;
 
-    case INSTRUCTION_RET: {
+    case INSTRUCTION_RET:
       registers[currentFrame->registersOffset - 1] = registers[currentFrame->registersOffset + currentFrame->instruction->retValue];
+      /*fallthrough*/
+    case INSTRUCTION_RET_VOID:
       currentFrame = currentFrame->prevFrame;
-      goto handle_ret;
-    } break;
-
-    case INSTRUCTION_RET_VOID: {
-      currentFrame = currentFrame->prevFrame;
-      goto handle_ret;
-    } break;
+      if (currentFrame) {
+        ASSERT(currentFrame->instruction->type == INSTRUCTION_CALL, "on return instruction is not CALL");
+        registers[currentFrame->registersOffset + currentFrame->instruction->call.ret] = registers[currentFrame->registersOffset + currentFrame->fn->values.len];
+      }
+    break;
 
     case INSTRUCTION_CALL: {
       IRFunction *callee = currentFrame->instruction->call.fn;
@@ -197,7 +196,6 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
         newFrame->registersOffset = currentFrame->registersOffset + currentFrame->fn->values.len + 1;
         newFrame->stackOffset = currentFrame->stackOffset + sizeof(InterpreterFrameData);
         newFrame->prevFrame = currentFrame;
-        //newFrame->instructionIndex++; //why?
         currentFrame = newFrame;
 
         resize(&registers, currentFrame->registersOffset + entryFunction->values.len);
@@ -256,12 +254,6 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
 
     continue;
 
-    handle_ret:
-    if (currentFrame) {
-      if (currentFrame->instruction->type == INSTRUCTION_CALL) {
-        registers[currentFrame->registersOffset + currentFrame->instruction->call.ret] = registers[currentFrame->registersOffset + currentFrame->fn->values.len];
-      }
-    }
   }
 
   IRValue result = registers[0];

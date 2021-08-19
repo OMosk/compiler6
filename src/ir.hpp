@@ -143,7 +143,6 @@ struct IRFunction {
   Array<IRBasicBlock_> basicBlocks;
   Array<IRInstruction> instructions;
 
-  int blockNameCounter;
   int argsNumber;
 
   uint16_t flags;
