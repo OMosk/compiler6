@@ -136,6 +136,19 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
     currentFrame->instructionIndex++;
 
     switch (currentFrame->instruction->type) {
+    case INSTRUCTION_ALLOC_STACK_NODE: {
+      for (int i = 0; i < currentFrame->fn->localVariables.len; ++i) {
+        IRLocalVariableAllocation local = currentFrame->fn->localVariables[i];
+        currentFrame->stackOffset = alignAddressUpwards(currentFrame->stackOffset, local.type->alignment);
+        ASSERT(currentFrame->stackOffset + local.type->size < stack.len, "interpreter stack overflow on allocate stack node");
+        void *ptr = stack.data + currentFrame->stackOffset;
+        ASSERT((uintptr_t)ptr % local.type->alignment == 0, "local variable on stack node is misaligned");
+        REG(local.addressValue).ptr = ptr;
+        currentFrame->stackOffset += local.type->size;
+        //REG(local.addressValue) = 
+      }
+    } break;
+
     case INSTRUCTION_JUMP: {
       currentFrame->instructionIndex
         = currentFrame->fn->basicBlocks[INST->jump.block].offset;
@@ -221,14 +234,6 @@ IRValue runIR(IRFunction *entryFunction, Array<IRValue> args) {
 
     case INSTRUCTION_CONSTANT: {
       REG(INST->constantInit.valueIndex) = INST->constantInit.constant;
-    } break;
-
-    case INSTRUCTION_ALLOCA: {
-      char *addr = stack.data + currentFrame->stackOffset;
-      ASSERT(currentFrame->stackOffset + INST->alloca.type->size < stack.len, "interpreter stack overflow on alloca");
-      currentFrame->stackOffset = alignAddressUpwards(currentFrame->stackOffset, INST->alloca.type->alignment);
-      currentFrame->stackOffset += INST->alloca.type->size;
-      REG(INST->alloca.valueIndex).ptr = addr;
     } break;
 
     case INSTRUCTION_STORE: {

@@ -57,11 +57,13 @@ IRValue valuePtr(void *v) {
   return r;
 }
 
+IRInstruction *createIRInstruction(IRFunction *fn, IRBasicBlockIndex bIndex, uint16_t type, Site site);
 
 IRFunction *createIRFunction(IRHub *h, Str name, Array<Type *> args, Type *retType) {
   IRFunction *fn = (IRFunction *)alloc(sizeof(IRFunction), alignof(IRFunction), 1);
   *fn = {};
   fn->init = createIRBlock(fn, "init");
+  createIRInstruction(fn, fn->init, INSTRUCTION_ALLOC_STACK_NODE, {});
 
   fn->name = name;
 
@@ -223,9 +225,11 @@ uint32_t irInstConstant(IRFunction *fn, IRBasicBlockIndex bIndex, Type *type, IR
 uint32_t irInstAlloca(IRFunction *fn, IRBasicBlockIndex bIndex, Type *type, Site site) {
   uint32_t result = createIRValue(fn);
   fn->values[result].type = getPointerType(type);
-  IRInstruction *alloca = createIRInstruction(fn, bIndex, INSTRUCTION_ALLOCA, site);
-  alloca->alloca.type = type;
-  alloca->alloca.valueIndex = result;
+  IRLocalVariableAllocation local = {};
+  local.type = type;
+  local.site = site;
+  local.addressValue = result;
+  append(&fn->localVariables, local);
 
   return result;
 }
@@ -258,7 +262,7 @@ const char *instructionTypeToString(int type) {
 
 
 void printInstruction(IRFunction *fn, IRInstruction *instruction, int index, FILE *f) {
-  fprintf(f, "  %4d: %3d %-10s|", index, instruction->type, instructionTypeToString(instruction->type) + 12);
+  fprintf(f, "  %4d: %3d %-20s|", index, instruction->type, instructionTypeToString(instruction->type) + 12);
   //+12 skips INSTRUCTION_
   if (instruction->site.file) {
     fprintf(f, "%15s:%3d| ", files[instruction->site.line].relative_path, instruction->site.line);
@@ -266,6 +270,11 @@ void printInstruction(IRFunction *fn, IRInstruction *instruction, int index, FIL
     fprintf(f, "%15s:%3d| ", "(internal)", 0);
   }
   switch (instruction->type) {
+    case INSTRUCTION_ALLOC_STACK_NODE: {
+      fprintf(f, " alloc_stack_node\n");
+      //fprintf(f, " jump to %s(%u)\n",
+      //  fn->basicBlocks[instruction->jump.block].name, instruction->jump.block);
+    } break;
     case INSTRUCTION_JUMP: {
       fprintf(f, " jump to %s(%u)\n",
         fn->basicBlocks[instruction->jump.block].name, instruction->jump.block);
@@ -316,16 +325,6 @@ void printInstruction(IRFunction *fn, IRInstruction *instruction, int index, FIL
       S(f32, "%f", f32);
       S(f64, "%f", f64);
       fprintf(f, "\n");
-    } break;
-
-    case INSTRUCTION_ALLOCA: {
-      Type *ptrType = fn->values[instruction->alloca.valueIndex].type;
-      Type *type = instruction->alloca.type;
-      fprintf(f, " ");
-      printType(ptrType, f);
-      fprintf(f, " v%u = alloca ", instruction->alloca.valueIndex);
-      printType(type, f);
-      fprintf(f, " (size = %hu, alignment = %hu)\n", type->size, type->alignment);
     } break;
 
     case INSTRUCTION_STORE: {
@@ -400,6 +399,17 @@ void printFunction(IRFunction *fn, FILE *f) {
 
   if (fn->flags & FUNCTION_FLAG_EXTERNAL) {
     return;
+  }
+
+  for (int i = 0; i < fn->localVariables.len; ++i) {
+    Type *ptrType = fn->values[fn->localVariables[i].addressValue].type;
+    fprintf(f, "  ");
+    printType(ptrType, f);
+    fprintf(f, " v%u = stack variable", fn->localVariables[i].addressValue);
+    fprintf(f, " ");
+    printType(fn->localVariables[i].type, f);
+    fprintf(f, " (size = %hu, alignment = %hu)\n", fn->localVariables[i].type->size, fn->localVariables[i].type->alignment);
+
   }
 
   for (int i = 0; i < fn->basicBlocks.len; ++i) {

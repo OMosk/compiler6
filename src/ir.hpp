@@ -92,6 +92,7 @@ struct IRInstruction {
 
 #define INSTRUCTIONS \
   XX(INSTRUCTION_TYPE_INVALID) \
+  XX(INSTRUCTION_ALLOC_STACK_NODE) \
   XX(INSTRUCTION_JUMP) \
   XX(INSTRUCTION_RET_VOID) \
   XX(INSTRUCTION_RET) \
@@ -99,7 +100,6 @@ struct IRInstruction {
   XX(INSTRUCTION_PUSH_ARG) \
   XX(INSTRUCTION_CALL) \
   XX(INSTRUCTION_CONSTANT) \
-  XX(INSTRUCTION_ALLOCA) \
   XX(INSTRUCTION_STORE) \
   XX(INSTRUCTION_LOAD) \
   XX(INSTRUCTION_COPY_BYTES) \
@@ -125,6 +125,12 @@ struct IRValueInfo {
   Type *type;
 };
 
+struct IRLocalVariableAllocation {
+  Type *type;
+  Site site;
+  uint32_t addressValue;
+};
+
 enum {
   FUNCTION_FLAG_EXTERNAL = 1 << 0,
   FUNCTION_FLAG_VARIADIC = 1 << 1,
@@ -140,6 +146,7 @@ struct IRFunction {
 
   Array<IRBasicBlock_> basicBlocks;
   Array<IRInstruction> instructions;
+  Array<IRLocalVariableAllocation> localVariables;
 
   int argsNumber;
 
