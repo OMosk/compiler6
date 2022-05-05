@@ -1,0 +1,35 @@
+#load "00-include0.c6";
+
+global1 : i32;
+constant :: "My constant string";
+
+MyStruct :: struct {
+  fieldA, fieldB : i32;
+  name : string;
+}
+
+main :: func (argc: i32, argv: **u8) i32 {
+  return 0;
+}
+
+// sum :: func (a, b : f64) f64 {
+//   result := a + b;
+//   return result;
+// }
+// 
+// lexerTest :: func() {
+//   a1 := 1 + 2;
+//   a2 := 1 * 2;
+//   a3 := 1 / 2;
+//   a3 := 1 % 2;
+//   a4 := 1 ^ 2;
+//   a5 := 1 & 2;
+//   a6 := 1 | 2;
+//   a8 := 1 < 2;
+//   a9 := 1 <= 2;
+//   a10 := 1 > 2;
+//   a11 := 1.0 >= 2.;
+//   a12 := 1.0 >= 2.(f32);
+//   //a13 := 0x123;
+//   /* should /*be*/ skipped */
+// }

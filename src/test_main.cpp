@@ -1,6 +1,7 @@
 #include "all.h"
 #include "all.cpp"
+#include "all_tests.cpp"
 
 int main(int argc, char **argv) {
-  return 0;
+  return runTests(argc, argv);
 }

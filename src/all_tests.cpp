@@ -1,0 +1,1 @@
+#include "tests/lexer.cpp"
