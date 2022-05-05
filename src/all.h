@@ -11,5 +11,8 @@
 
 #include "core_types.h"
 #include "parsing/tokenization.h"
+#include "parsing/parser.h"
+
+#include "ast.h"
 
 

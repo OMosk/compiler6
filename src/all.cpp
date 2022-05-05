@@ -6,3 +6,5 @@
 #include "utils/utf8.cpp"
 
 #include "parsing/tokenization.cpp"
+
+#include "ast.cpp"
