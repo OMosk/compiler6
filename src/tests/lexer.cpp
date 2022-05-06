@@ -40,3 +40,53 @@ TEST(LexingSimpleStruct) (T *t) {
   if (!expectToken(t, __FILE__, __LINE__, __func__, &lexer, TOKEN_TYPE_RIGHT_BRACE, "}")) return;
   if (!expectToken(t, __FILE__, __LINE__, __func__, &lexer, TOKEN_TYPE_EOF, "")) return;
 }
+
+TEST(LexingRegressionClosingParen) (T *t) {
+  auto src = STR("1 * (2 + 3)");
+  Lexer lexer = {.source = src};
+
+  if (!expectToken(t, __FILE__, __LINE__, __func__, &lexer, TOKEN_TYPE_NUMBER_LITERAL, "1")) return;
+  if (!expectToken(t, __FILE__, __LINE__, __func__, &lexer, TOKEN_TYPE_MULTIPLY, "*")) return;
+  if (!expectToken(t, __FILE__, __LINE__, __func__, &lexer, TOKEN_TYPE_LEFT_PAREN, "(")) return;
+  if (!expectToken(t, __FILE__, __LINE__, __func__, &lexer, TOKEN_TYPE_NUMBER_LITERAL, "2")) return;
+  if (!expectToken(t, __FILE__, __LINE__, __func__, &lexer, TOKEN_TYPE_PLUS, "+")) return;
+  if (!expectToken(t, __FILE__, __LINE__, __func__, &lexer, TOKEN_TYPE_NUMBER_LITERAL, "3")) return;
+  if (!expectToken(t, __FILE__, __LINE__, __func__, &lexer, TOKEN_TYPE_RIGHT_PAREN, ")")) return;
+  if (!expectToken(t, __FILE__, __LINE__, __func__, &lexer, TOKEN_TYPE_EOF, "")) return;
+}
+
+TEST(LexingOffsetsAreCorrect) (T *t) {
+  auto src = STR("1 + 2");
+  Lexer lexer = {.source = src};
+
+#define CHECK(GOT, WANTED)                                                     \
+  do {                                                                         \
+    auto got = (GOT);                                                          \
+    auto wanted = (WANTED);                                                    \
+    if (got != wanted) {                                                       \
+      t->Printf("%s:%d Failed, got %u, wanted %u\n", __FILE__, __LINE__, got,  \
+                wanted);                                                       \
+    }                                                                          \
+  } while (0)
+
+  auto first = lexer.peek();
+  CHECK(lexer.peek().offset0, 0);
+  CHECK(lexer.eat().offset0, 0);
+
+  CHECK(lexer.peek().offset0, 2);
+  CHECK(lexer.eat().offset0, 2);
+
+  CHECK(lexer.peek().offset0, 4);
+  CHECK(lexer.eat().offset0, 4);
+
+  lexer.reset(first);
+
+  CHECK(lexer.peek().offset0, 0);
+  CHECK(lexer.eat().offset0, 0);
+
+  CHECK(lexer.peek().offset0, 2);
+  CHECK(lexer.eat().offset0, 2);
+
+  CHECK(lexer.peek().offset0, 4);
+  CHECK(lexer.eat().offset0, 4);
+}

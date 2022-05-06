@@ -1,4 +1,5 @@
 compiler
 tests
+!src/tests
 ast.out*
 tokens.out*

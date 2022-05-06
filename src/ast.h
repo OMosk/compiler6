@@ -2,8 +2,79 @@
 
 #include "core_types.h"
 
+enum ASTFlags {
+  AST_FLAGS_EXPR_IN_PAREN = 1 << 0,
+};
+
+enum UnaryOp {
+  UNARY_OP_NOOP,
+  UNARY_OP_PLUS,
+  UNARY_OP_MINUS,
+  UNARY_OP_DEREFERENCE,
+  UNARY_OP_ADDRESSOF,
+  UNARY_OP_LOGICAL_NEGATE,
+  UNARY_OP_BITWISE_NEGATE,
+};
+
+
+enum BinaryOp {
+  BINARY_OP_NOOP,
+
+  BINARY_OP_PLUS,
+  BINARY_OP_MINUS,
+
+  BINARY_OP_MULTIPLY,
+  BINARY_OP_DIVISION,
+  BINARY_OP_REMAINDER,
+
+  BINARY_OP_LOGICAL_AND,
+  BINARY_OP_LOGICAL_OR,
+
+  BINARY_OP_BITWISE_AND,
+  BINARY_OP_BITWISE_OR,
+  BINARY_OP_BITWISE_XOR,
+
+  BINARY_OP_BITWISE_SHIFT_LEFT,
+  BINARY_OP_BITWISE_SHIFT_RIGHT,
+
+  BINARY_OP_LESS,
+  BINARY_OP_LESS_OR_EQUAL,
+  BINARY_OP_GREATER,
+  BINARY_OP_GREATER_OR_EQUAL,
+  BINARY_OP_EQUAL,
+  BINARY_OP_NOT_EQUAL,
+};
+
+int priority(BinaryOp op);
+
 #define AST_NODES_LIST                                                         \
   XX(ASTIdentifier, { Str name; })                                             \
+  XX(ASTUnaryOp, {                                                             \
+    UnaryOp op;                                                                \
+    AST *operand;                                                              \
+  })                                                                           \
+  XX(ASTBinaryOp, {                                                            \
+    BinaryOp op;                                                               \
+    AST *left;                                                                 \
+    AST *right;                                                                \
+  })                                                                           \
+  XX(ASTCall, {                                                                \
+    AST *callee;                                                               \
+    Array<AST *> args;                                                         \
+  })                                                                           \
+  XX(ASTSubscript, {                                                           \
+    AST *indexable;                                                            \
+    AST *index;                                                                \
+  })                                                                           \
+  XX(ASTCast, {                                                                \
+    AST *operand;                                                              \
+    AST *toTypeExpr;                                                           \
+  })                                                                           \
+  XX(ASTMemberAccess, {                                                        \
+    AST *structLike;                                                           \
+    ASTIdentifier *field;                                                      \
+  })                                                                           \
+  XX(ASTNumberLiteral, { Str value; })                                         \
   XX(ASTStringLiteral, { Str value; })
 
 enum ASTNodeType {

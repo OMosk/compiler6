@@ -31,7 +31,7 @@
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
-            "environment": [],
+            "environment": [{"name":"VERBOSE","value":"1"}],
             "externalConsole": false,
             "MIMode": "gdb",
             "setupCommands": [
@@ -41,7 +41,7 @@
                     "ignoreFailures": true
                 }
             ]
-        }
+        },
         {
             "name": "(gdb) Launch core",
             "type": "cppdbg",
