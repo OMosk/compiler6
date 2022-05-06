@@ -1,12 +1,21 @@
 #pragma once
 
+// @TODO: rename file to use - instead of _ in filename
+
 #include <inttypes.h>
 
 #include <linux/limits.h> //PATH_MAX
 
 #include "utils/allocator.h"
-#include "utils/file-entry.h"
+#include "utils/string.h"
 #include "utils/array.h"
+
+struct FileEntry {
+  Str absolutePath;
+  Str relativePath;
+  Str content;
+  uint32_t index;
+};
 
 struct GlobalData {
   Array<FileEntry> files;

@@ -25,3 +25,9 @@ Str SPrintf(Allocator *a, const char *fmt, ...) {
 
   return buffer;
 }
+
+
+bool StrEqual(Str a, Str b) {
+  if (a.len != b.len) return false;
+  return memcmp(a.data, b.data, a.len) == 0;
+}

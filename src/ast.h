@@ -18,7 +18,6 @@ struct AST {
   ASTNodeType type;
   uint32_t fileIndex, offset0, offset1;
   uint32_t flags;
-  uint32_t debugId;
 };
 
 #define XX(NAME, STRUCT) struct NAME : public AST STRUCT;

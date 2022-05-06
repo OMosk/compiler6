@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../utils/file-entry.h"
 #include "../utils/string.h"
 
 #define TOKENS_LIST                                                            \
@@ -33,7 +32,8 @@ struct Lexer {
   bool hasBufferedToken;
   Token bufferedToken;
 
-  FileEntry fileEntry;
+  uint32_t fileIndex;
+  Str source;
   uint32_t offset;
 
   Token eat();

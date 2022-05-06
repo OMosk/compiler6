@@ -11,7 +11,7 @@ bool expectToken(T *t, const char *file, int line, const char *funcName,
   }
 
   int wantValueLength = strlen(wantValue);
-  Str gotValue = Str{lexer->fileEntry.content.data + token.offset0,
+  Str gotValue = Str{lexer->source.data + token.offset0,
                      token.offset1 - token.offset0};
 
   if (wantValueLength != gotValue.len ||
@@ -25,10 +25,9 @@ bool expectToken(T *t, const char *file, int line, const char *funcName,
   return true;
 }
 
-TEST(FileLexingSimpleStruct) (T *t) {
+TEST(LexingSimpleStruct) (T *t) {
   auto src = STR("MyStruct :: struct {\n\tfield1: type1;\n}\n");
-  auto fileEntry = FileEntry{.content = src};
-  Lexer lexer = {.fileEntry = fileEntry};
+  Lexer lexer = {.source = src};
 
   if (!expectToken(t, __FILE__, __LINE__, __func__, &lexer, TOKEN_TYPE_IDENTIFIER, "MyStruct")) return;
   if (!expectToken(t, __FILE__, __LINE__, __func__, &lexer, TOKEN_TYPE_COLON_COLON, "::")) return;

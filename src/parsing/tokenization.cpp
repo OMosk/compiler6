@@ -9,7 +9,7 @@ Token Lexer::peek() {
     return this->bufferedToken;
   }
 
-  auto nextToken = findNextToken(this->fileEntry.content, this->offset);
+  auto nextToken = findNextToken(this->source, this->offset);
   this->bufferedToken = nextToken;
   this->hasBufferedToken = true;
   this->offset = nextToken.offset1;

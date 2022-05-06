@@ -1,12 +1,24 @@
 #include "ast.h"
 
-#include <stdatomic.h>
-
-atomic_uint nextASTNodeDebugId;
-
 AST* setupASTNode(AST *node, ASTNodeType type, size_t size) {
   bzero(node, size);
   node->type = type;
-  node->debugId = atomic_fetch_add(&nextASTNodeDebugId, 1);
   return node;
+}
+
+const char *toString(ASTNodeType type) {
+  switch (type) {
+  #define XX(NAME, STRUCT) case NAME ## _: return #NAME;
+  AST_NODES_LIST
+  #undef XX
+  default: return "unknown";
+  } 
+}
+
+AST *astSafeCastImpl(AST *node, ASTNodeType wantedType) {
+  if (node->type == wantedType) {
+    return node;
+  } else {
+    return NULL;
+  }
 }
