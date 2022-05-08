@@ -47,6 +47,10 @@ enum BinaryOp {
 
 int priority(BinaryOp op);
 
+struct ASTStruct;
+struct ASTVar;
+struct ASTBlock;
+
 #define AST_NODES_LIST                                                         \
   XX(ASTIdentifier, { Str name; })                                             \
   XX(ASTUnaryOp, {                                                             \
@@ -75,7 +79,31 @@ int priority(BinaryOp op);
     ASTIdentifier *field;                                                      \
   })                                                                           \
   XX(ASTNumberLiteral, { Str value; })                                         \
-  XX(ASTStringLiteral, { Str value; })
+  XX(ASTStringLiteral, { Str value; })                                         \
+  XX(ASTFile, { Array<AST *> topLevelDecls; })                                 \
+  XX(ASTLoadDirective, { ASTStringLiteral *path; })                            \
+  XX(ASTStruct, {                                                              \
+    ASTIdentifier *name;                                                       \
+    Array<ASTVar *> members;                                                   \
+  })                                                                           \
+  XX(ASTConst, {                                                               \
+    ASTIdentifier *name;                                                       \
+    AST *initExpr;                                                             \
+    AST *parentScope;                                                          \
+  })                                                                           \
+  XX(ASTVar, {                                                                 \
+    ASTIdentifier *name;                                                       \
+    AST *typeExpr;                                                             \
+    AST *initExpr;                                                             \
+    AST *parentScope;                                                          \
+  })                                                                           \
+  XX(ASTFunction, {                                                            \
+    ASTIdentifier *name;                                                       \
+    Array<ASTVar *> args;                                                      \
+    Array<ASTVar *> returns;                                                   \
+    ASTBlock *body;                                                            \
+  })                                                                           \
+  XX(ASTBlock, { Array<AST *> statements; })
 
 enum ASTNodeType {
 #define XX(NAME, STRUCT) NAME##_,
@@ -103,3 +131,7 @@ AST *setupASTNode(AST *node, ASTNodeType type, size_t size);
 AST *astSafeCastImpl(AST *node, ASTNodeType wantedType);
 #define AST_CAST(TARGET_TYPE, NODE)                                            \
   static_cast<TARGET_TYPE *>(astSafeCastImpl(NODE, TARGET_TYPE##_))
+
+AST *astAssertCastImpl(AST *node, ASTNodeType wantedType);
+#define AST_ASSERT_CAST(TARGET_TYPE, NODE)                                     \
+  static_cast<TARGET_TYPE *>(astAssertCastImpl(NODE, TARGET_TYPE##_))

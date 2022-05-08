@@ -4,13 +4,28 @@
 #include "../ast.h"
 #include "tokenization.h"
 
+// enum ParsingFlag {
+//   PARSING_FLAG_
+// };
+
 struct ParsingError {
   uint32_t offset;
   Str message;
+  const char *producerSourceCodeFile;
+  int producerSourceCodeLine;
 };
 
 #define FORWARD_DECLARE_PARSER(NAME) \
   AST *NAME(ThreadData *ctx, Lexer *lexer, uint64_t parsingFlags, ParsingError *error)
+
+FORWARD_DECLARE_PARSER(parseFile);
+FORWARD_DECLARE_PARSER(parseTopLevelDeclaration);
+FORWARD_DECLARE_PARSER(parseLoadDirective);
+FORWARD_DECLARE_PARSER(parseDeclaration);
+FORWARD_DECLARE_PARSER(parseAnonymousStruct);
+FORWARD_DECLARE_PARSER(parseAnonymousFunction);
+FORWARD_DECLARE_PARSER(parseBlock);
+FORWARD_DECLARE_PARSER(parseStatement);
 
 FORWARD_DECLARE_PARSER(parseIdentifier);
 FORWARD_DECLARE_PARSER(parseStringLiteral);

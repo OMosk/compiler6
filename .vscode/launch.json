@@ -28,7 +28,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/tests",
-            "args": [],
+            "args": ["ParsingFunctionMultipleArgsNoReturn"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [{"name":"VERBOSE","value":"1"}],

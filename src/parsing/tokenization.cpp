@@ -59,6 +59,7 @@ bool hasPrefix(const char *str, const char *prefix) {
 Token matchIdentifierOrKeyword(Str content, uint32_t offset);
 Token matchStringLiteral(Str content, uint32_t offset);
 Token matchNumberLiteral(Str content, uint32_t offset);
+Token matchDirective(Str content, uint32_t offset);
 
 Token findNextToken(Str content, uint32_t offset) {
   while (offset < content.len && isWhiteSpace(content.data[offset])) offset++;
@@ -107,6 +108,7 @@ Token findNextToken(Str content, uint32_t offset) {
   IF_PREFIX_RETURN(")", TOKEN_TYPE_RIGHT_PAREN);
 
   if (hasPrefix(content.data + offset, "\"")) return matchStringLiteral(content, offset);
+  if (hasPrefix(content.data + offset, "#")) return matchDirective(content, offset);
   if (isNum(content.data[offset])) return matchNumberLiteral(content, offset);
   if (isAlpha(content.data[offset])) return matchIdentifierOrKeyword(content, offset);
 
@@ -126,7 +128,20 @@ Token matchIdentifierOrKeyword(Str content, uint32_t offset) {
 
   while (offset1 < content.len && isAlphaNum(content.data[offset1])) offset1++;
 
-  if (strncmp(content.data + offset, "struct", offset1 - offset) == 0) return {TOKEN_TYPE_STRUCT, offset, offset1};
+#define IF_EQUALS_RETURN(LITERAL, TYPE)                                        \
+  do {                                                                         \
+    if ((offset1 - offset) == (sizeof(LITERAL) - 1) &&                         \
+        strncmp(content.data + offset, LITERAL, offset1 - offset) == 0)        \
+      return {TYPE, offset, offset1};                                          \
+  } while (0)
+
+  IF_EQUALS_RETURN("struct", TOKEN_TYPE_STRUCT);
+  IF_EQUALS_RETURN("func", TOKEN_TYPE_FUNC);
+  IF_EQUALS_RETURN("defer", TOKEN_TYPE_DEFER);
+  IF_EQUALS_RETURN("if", TOKEN_TYPE_IF);
+  IF_EQUALS_RETURN("while", TOKEN_TYPE_WHILE);
+
+#undef IF_EQUALS_RETURN
 
   return {TOKEN_TYPE_IDENTIFIER, offset, offset1};
 }
@@ -164,3 +179,20 @@ const char * toString(TokenType tokenType) {
   }
 }
 
+Token matchDirective(Str content, uint32_t offset) {
+  uint32_t offset1 = offset + 1;
+
+  while (offset1 < content.len && isAlphaNum(content.data[offset1])) offset1++;
+
+  #define IF_EQUALS_RETURN(LITERAL, TYPE)                                        \
+  do {                                                                         \
+    if (strncmp(content.data + offset, LITERAL, offset1 - offset) == 0)        \
+      return {TYPE, offset, offset1};                                          \
+  } while (0)
+
+  IF_EQUALS_RETURN("#load", TOKEN_TYPE_LOAD_DIRECTIVE);
+
+  #undef IF_EQUALS_RETURN
+
+  return {TOKEN_TYPE_IDENTIFIER, offset, offset1};
+}

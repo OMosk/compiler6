@@ -90,3 +90,11 @@ TEST(LexingOffsetsAreCorrect) (T *t) {
   CHECK(lexer.peek().offset0, 4);
   CHECK(lexer.eat().offset0, 4);
 }
+
+TEST(LexingRegressionSingleCharacterIdentifier) (T *t) {
+  auto src = STR("f");
+  Lexer lexer = {.source = src};
+
+  if (!expectToken(t, __FILE__, __LINE__, __func__, &lexer, TOKEN_TYPE_IDENTIFIER, "f")) return;
+  if (!expectToken(t, __FILE__, __LINE__, __func__, &lexer, TOKEN_TYPE_EOF, "")) return;
+}

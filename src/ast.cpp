@@ -24,6 +24,15 @@ AST *astSafeCastImpl(AST *node, ASTNodeType wantedType) {
 }
 
 
+AST *astAssertCastImpl(AST *node, ASTNodeType wantedType) {
+  if (node->type == wantedType) {
+    return node;
+  } else {
+    abort();
+  }
+}
+
+
 int priority(BinaryOp op) {
   switch (op) {
   case BINARY_OP_NOOP: abort(); break;

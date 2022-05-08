@@ -26,3 +26,5 @@ __attribute__((constructor)) void TEST_CASE_NAME ## _register_function() { \
   registerTestFunction(TEST_CASE_NAME, #TEST_CASE_NAME); \
 } \
 void TEST_CASE_NAME
+
+#define FAILF(...) do { t->Printf(__VA_ARGS__); t->Fail(); return; } while(0)

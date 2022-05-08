@@ -6,8 +6,11 @@
   AST *NAME(ThreadData *ctx, Lexer *lexer, uint64_t parsingFlags,              \
             ParsingError *error) {                                             \
     Token positionBefore = lexer->peek();                                      \
-    AST *result = NAME##Impl(ctx, lexer, parsingFlags, error);                 \
+    ParsingError tmpError = {};                                                \
+    AST *result = NAME##Impl(ctx, lexer, parsingFlags, &tmpError);             \
     if (!result) {                                                             \
+      if (tmpError.offset > error->offset)                                     \
+        *error = tmpError;                                                     \
       lexer->reset(positionBefore);                                            \
     } else {                                                                   \
       *error = {};                                                             \
@@ -22,6 +25,8 @@
   if (NAME.type != TYPE) {                                                     \
     error->offset = NAME.offset0;                                              \
     error->message = STR(MESSAGE);                                             \
+    error->producerSourceCodeFile = __FILE__;                                  \
+    error->producerSourceCodeLine = __LINE__;                                  \
     return NULL;                                                               \
   }
 
@@ -29,6 +34,8 @@
   do {                                                                         \
     error->offset = (OFFSET);                                                  \
     error->message = STR(MESSAGE);                                             \
+    error->producerSourceCodeFile = __FILE__;                                  \
+    error->producerSourceCodeLine = __LINE__;                                  \
     return NULL;                                                               \
   } while (0)
 
@@ -331,6 +338,7 @@ DEFINE_PARSER(parseExpr) {
     binaryOp->right = rightOperand;
     binaryOp->op = op;
     binaryOp->fileIndex = lexer->fileIndex;
+    //TODO: come back to this and think again if this behavior is ok and correct
     binaryOp->offset0 = operationToken.offset0;
     binaryOp->offset1 = operationToken.offset1;
 
@@ -348,4 +356,264 @@ DEFINE_PARSER(parseExpr) {
   }
 
   return left;
+}
+
+DEFINE_PARSER(parseFile) {
+  Array<AST *> topLevelDecls = {};
+  for (;;) {
+    auto decl = parseTopLevelDeclaration(ctx, lexer, parsingFlags, error);
+    if (decl) {
+      append(&topLevelDecls, decl, &ctx->allocator);
+    } else {
+      auto token = lexer->peek();
+
+      if (token.type == TOKEN_TYPE_EOF) {
+        lexer->eat();
+        break;
+      } else if (token.type == TOKEN_TYPE_UNEXPECTED_SEQUENCE_OF_CHARS) {
+        RETURN_NULL_WITH_ERROR(token.offset0, "Unexpected sequence of characters");
+      } else if (token.type == TOKEN_TYPE_UNTERMINATED_STRING_LITERAL) {
+        RETURN_NULL_WITH_ERROR(token.offset0, "Unterminated string literal");
+      } else {
+        return NULL;
+      }
+    }
+  }
+
+  auto file = AST_ALLOC(ASTFile, &ctx->allocator);
+  file->topLevelDecls = topLevelDecls;
+  return file;
+}
+
+DEFINE_PARSER(parseTopLevelDeclaration) {
+  AST *decl = NULL;
+  if (!decl) decl = parseLoadDirective(ctx, lexer, parsingFlags, error);
+  if (!decl) decl = parseDeclaration(ctx, lexer, parsingFlags, error);
+
+  return decl;
+}
+
+
+DEFINE_PARSER(parseLoadDirective) {
+  MATCH_TOKEN(loadToken, TOKEN_TYPE_LOAD_DIRECTIVE, "Expected '#load' directive");
+  auto stringLiteralBase = parseStringLiteral(ctx, lexer, parsingFlags, error);
+  if (!stringLiteralBase) return NULL;
+
+  auto stringLiteral = AST_CAST(ASTStringLiteral, stringLiteralBase);
+
+  auto directive = AST_ALLOC(ASTLoadDirective, &ctx->allocator);
+  directive->path = stringLiteral;
+  directive->fileIndex = lexer->fileIndex;
+  directive->offset0 = loadToken.offset0;
+  directive->offset1 = stringLiteral->offset1;
+
+  return directive;
+}
+
+
+DEFINE_PARSER(parseAnonymousStruct) {
+  MATCH_TOKEN(strucToken, TOKEN_TYPE_STRUCT, "Expected struct keyword");
+  MATCH_TOKEN(openingBrace, TOKEN_TYPE_LEFT_BRACE, "Expected {");
+
+  auto newStruct = AST_ALLOC(ASTStruct, &ctx->allocator);
+
+  while (lexer->peek().type != TOKEN_TYPE_RIGHT_BRACE) {
+    Array<ASTIdentifier *> fieldNames = {};
+
+    while (lexer->peek().type != TOKEN_TYPE_COLON) {
+      auto ident = parseIdentifier(ctx, lexer, parsingFlags, error);
+      if (!ident) return NULL;
+
+      append(&fieldNames, AST_ASSERT_CAST(ASTIdentifier, ident),
+        &ctx->allocator);
+
+      if (lexer->peek().type == TOKEN_TYPE_COMMA) {
+        lexer->eat();
+        continue;
+      } else {
+        break;
+      }
+    }
+
+    MATCH_TOKEN(colon, TOKEN_TYPE_COLON, "Expected :");
+    auto typeExpr = parseExpr(ctx, lexer, parsingFlags, error);
+    if (!typeExpr) NULL;
+    MATCH_TOKEN(semicolon, TOKEN_TYPE_SEMICOLON, "Expected ;");
+
+    for (int i = 0; i < fieldNames.len; i++) {
+      auto name = fieldNames[i];
+      auto newMember = AST_ALLOC(ASTVar, &ctx->allocator);
+      newMember->name = name;
+      newMember->typeExpr = typeExpr;
+      newMember->parentScope = newStruct;
+      append(&newStruct->members, newMember, &ctx->allocator);
+    }
+  }
+
+  MATCH_TOKEN(closingBrace, TOKEN_TYPE_RIGHT_BRACE, "Expected }");
+
+  newStruct->fileIndex = lexer->fileIndex;
+  newStruct->offset0 = strucToken.offset0;
+  newStruct->offset1 = closingBrace.offset1;
+  return newStruct;
+}
+
+DEFINE_PARSER(parseDeclaration) {
+  auto identAST = parseIdentifier(ctx, lexer, parsingFlags, error);
+  if (!identAST) return NULL;
+  auto ident = AST_ASSERT_CAST(ASTIdentifier, identAST);
+
+  MATCH_TOKEN(colonColon, TOKEN_TYPE_COLON_COLON, "Expected '::'");
+
+  AST *thing = NULL;
+  //TODO: probably anonymous struct can be part of expression
+  // so it makes sense to in future to move parsing there
+  if (!thing) thing = parseAnonymousStruct(ctx, lexer, parsingFlags, error);
+  if (!thing) thing = parseAnonymousFunction(ctx, lexer, parsingFlags, error);
+  if (!thing) thing = parseExpr(ctx, lexer, parsingFlags, error);
+  if (!thing) return NULL;
+
+  switch (thing->type) {
+  case ASTStruct_: {
+    auto n = AST_ASSERT_CAST(ASTStruct, thing);
+    n->name = ident;
+    n->offset0 = ident->offset0;
+  } break;
+  case ASTFunction_: {
+    auto n = AST_ASSERT_CAST(ASTFunction, thing);
+    n->name = ident;
+    n->offset0 = ident->offset0;
+  } break;
+  default: {
+    auto n = AST_ALLOC(ASTConst, &ctx->allocator);
+    n->name = ident;
+    n->initExpr = thing;
+    n->fileIndex = lexer->fileIndex;
+    n->offset0 = ident->offset0;
+    n->offset1 = thing->offset1;
+    thing = n;
+  } break;
+  }
+
+  return thing;
+}
+
+DEFINE_PARSER(parseAnonymousFunction) {
+  MATCH_TOKEN(funcToken, TOKEN_TYPE_FUNC, "Expected 'func' keyword");
+
+  auto newFunction = AST_ALLOC(ASTFunction, &ctx->allocator);
+
+  MATCH_TOKEN(openingParen, TOKEN_TYPE_LEFT_PAREN, "Expected '('");
+
+  while (lexer->peek().type != TOKEN_TYPE_RIGHT_PAREN) {
+    Array<ASTIdentifier *> parameterNames = {};
+
+    while (lexer->peek().type != TOKEN_TYPE_COLON) {
+      auto ident = parseIdentifier(ctx, lexer, parsingFlags, error);
+      if (!ident) return NULL;
+
+      append(&parameterNames, AST_ASSERT_CAST(ASTIdentifier, ident),
+        &ctx->allocator);
+
+      if (lexer->peek().type == TOKEN_TYPE_COMMA) {
+        lexer->eat();
+        continue;
+      } else {
+        break;
+      }
+    }
+
+    MATCH_TOKEN(colon, TOKEN_TYPE_COLON, "Expected :");
+    auto typeExpr = parseExpr(ctx, lexer, parsingFlags, error);
+    if (!typeExpr) NULL;
+
+
+    for (int i = 0; i < parameterNames.len; i++) {
+      auto name = parameterNames[i];
+      auto newMember = AST_ALLOC(ASTVar, &ctx->allocator);
+      newMember->name = name;
+      newMember->typeExpr = typeExpr;
+      newMember->parentScope = newFunction;
+      append(&newFunction->args, newMember, &ctx->allocator);
+    }
+
+    if (lexer->peek().type == TOKEN_TYPE_COMMA) {
+      lexer->eat();
+      continue;
+    } else {
+      break;
+    }
+  }
+
+  MATCH_TOKEN(closingParen, TOKEN_TYPE_RIGHT_PAREN, "Expected ')'");
+
+  if (lexer->peek().type == TOKEN_TYPE_LEFT_PAREN) {
+    lexer->eat();
+    while (lexer->peek().type != TOKEN_TYPE_RIGHT_PAREN) {
+      auto typeExpr = parseExpr(ctx, lexer, parsingFlags, error);
+      if (!typeExpr) return NULL;
+
+      ASTVar *returnVar = AST_ALLOC(ASTVar, &ctx->allocator);
+      returnVar->fileIndex = lexer->fileIndex;
+      returnVar->offset0 = typeExpr->offset0;
+      returnVar->offset1 = typeExpr->offset1;
+      returnVar->typeExpr = typeExpr;
+
+      append(&newFunction->returns, returnVar, &ctx->allocator);
+
+      if (lexer->peek().type == TOKEN_TYPE_COMMA) {
+        lexer->eat();
+        continue;
+      } else {
+        break;
+      }
+    }
+    MATCH_TOKEN(closingParen, TOKEN_TYPE_RIGHT_PAREN, "Expected ')'");
+  } else if (lexer->peek().type != TOKEN_TYPE_LEFT_BRACE) {
+    auto typeExpr = parseExpr(ctx, lexer, parsingFlags, error);
+    if (!typeExpr) return NULL;
+
+    ASTVar *returnVar = AST_ALLOC(ASTVar, &ctx->allocator);
+    returnVar->fileIndex = lexer->fileIndex;
+    returnVar->offset0 = typeExpr->offset0;
+    returnVar->offset1 = typeExpr->offset1;
+    returnVar->typeExpr = typeExpr;
+
+    append(&newFunction->returns, returnVar, &ctx->allocator);
+  }
+
+  auto bodyBlock = parseBlock(ctx, lexer, parsingFlags, error);
+  if (!bodyBlock) return NULL;
+
+  newFunction->body = AST_ASSERT_CAST(ASTBlock, bodyBlock);
+
+  newFunction->fileIndex = lexer->fileIndex;
+  newFunction->offset0 = funcToken.offset0;
+  newFunction->offset1 = bodyBlock->offset1;
+
+  return newFunction;
+}
+
+DEFINE_PARSER(parseBlock) {
+  MATCH_TOKEN(openingBrace, TOKEN_TYPE_LEFT_BRACE, "expected '{'");
+  auto block = AST_ALLOC(ASTBlock, &ctx->allocator);
+
+  while (lexer->peek().type != TOKEN_TYPE_RIGHT_BRACE) {
+    auto statement = parseStatement(ctx, lexer, parsingFlags, error);
+    if (!statement) return NULL;
+    append(&block->statements, statement, &ctx->allocator);
+  }
+  MATCH_TOKEN(closingBrace, TOKEN_TYPE_RIGHT_BRACE, "expected '}'");
+  block->fileIndex = lexer->fileIndex;
+  block->offset0 = openingBrace.offset0;
+  block->offset1 = closingBrace.offset1;
+  return block;
+}
+
+
+DEFINE_PARSER(parseStatement) {
+  AST *s = NULL;
+  if (!s) s = parseBlock(ctx, lexer, parsingFlags, error);
+
+  return s;
 }
