@@ -139,6 +139,7 @@ Token matchIdentifierOrKeyword(Str content, uint32_t offset) {
   IF_EQUALS_RETURN("func", TOKEN_TYPE_FUNC);
   IF_EQUALS_RETURN("defer", TOKEN_TYPE_DEFER);
   IF_EQUALS_RETURN("if", TOKEN_TYPE_IF);
+  IF_EQUALS_RETURN("else", TOKEN_TYPE_ELSE);
   IF_EQUALS_RETURN("while", TOKEN_TYPE_WHILE);
 
 #undef IF_EQUALS_RETURN

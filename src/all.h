@@ -13,5 +13,6 @@
 #include "parsing/parser.h"
 
 #include "ast.h"
+#include "reporting.h"
 
 

@@ -46,6 +46,7 @@
   XX(TOKEN_TYPE_IDENTIFIER)                                                    \
   XX(TOKEN_TYPE_LOAD_DIRECTIVE)                                                \
   XX(TOKEN_TYPE_IF)                                                            \
+  XX(TOKEN_TYPE_ELSE)                                                          \
   XX(TOKEN_TYPE_WHILE)                                                         \
   XX(TOKEN_TYPE_DEFER)                                                         \
   XX(TOKEN_TYPE_FUNC)                                                          \

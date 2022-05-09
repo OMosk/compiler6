@@ -438,3 +438,28 @@ TEST(ParsingFunctionMultipleArgsCombinedNoReturn) (T *t) {
             typeIdent->name.data);
   }
 }
+
+TEST(ParseBlockAndStatements) (T *t) {
+  char src[] = R"mark({
+    size : i32 = 1024;
+    ptr := malloc(size);
+    if (ptr == NULL) {
+      abort();
+    }
+    defer free(ptr);
+    i : int;
+    while (i < size) {
+      print(ptr[i]);
+    }
+  })mark";
+  auto setup = setupTestData(STR(src));
+
+  ParsingError error = {};
+  AST *ast = parseBlock(&setup->threadData, &setup->lexer, 0, &error);
+  if (!ast) {
+    report(&setup->threadData, stdout, "[error]", 0, error.offset, error.offset, error.message);
+    FAILF("Failed to parse block: at %u %.*s\n",
+      error.offset, (int)error.message.len, error.message.data);
+  }
+
+}

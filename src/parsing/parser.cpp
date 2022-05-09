@@ -397,6 +397,7 @@ DEFINE_PARSER(parseTopLevelDeclaration) {
   AST *decl = NULL;
   if (!decl) decl = parseLoadDirective(ctx, lexer, parsingFlags, error);
   if (!decl) decl = parseDeclaration(ctx, lexer, parsingFlags, error);
+  if (!decl) decl = parseVariableDefinition(ctx, lexer, parsingFlags, error);
 
   return decl;
 }
@@ -622,6 +623,146 @@ DEFINE_PARSER(parseBlock) {
 DEFINE_PARSER(parseStatement) {
   AST *s = NULL;
   if (!s) s = parseBlock(ctx, lexer, parsingFlags, error);
+  if (!s) s = parseVariableDefinition(ctx, lexer, parsingFlags, error);
+  if (!s) s = parseDeclaration(ctx, lexer, parsingFlags, error);
+  if (!s) s = parseIfStatement(ctx, lexer, parsingFlags, error);
+  if (!s) s = parseWhileLoop(ctx, lexer, parsingFlags, error);
+  if (!s) s = parseDeferStatement(ctx, lexer, parsingFlags, error);
+  if (!s) s = parseExprStatement(ctx, lexer, parsingFlags, error);
 
   return s;
+}
+
+
+DEFINE_PARSER(parseVariableDefinition) {
+  Array<ASTIdentifier *> identifiers = {};
+  for (;;) {
+    auto ast = parseIdentifier(ctx, lexer, parsingFlags, error);
+    if (!ast) return NULL;
+    append(&identifiers, AST_ASSERT_CAST(ASTIdentifier, ast), &ctx->allocator);
+    if (lexer->peek().type == TOKEN_TYPE_COMMA) {
+      lexer->eat();
+      continue;
+    } else {
+      break;
+    }
+  }
+
+  AST *typeExpr = NULL;
+
+  bool expectInitialization = false;
+
+  if (lexer->peek().type == TOKEN_TYPE_COLON_EQUAL) {
+    lexer->eat();
+    expectInitialization = true;
+  } else if (lexer->peek().type == TOKEN_TYPE_COLON) {
+    lexer->eat();
+    typeExpr = parseExpr(ctx, lexer, parsingFlags, error);
+    if (!typeExpr) return NULL;
+
+    if (lexer->peek().type == TOKEN_TYPE_EQUALS) {
+      lexer->eat();
+      expectInitialization = true;
+    }
+  } else {
+    RETURN_NULL_WITH_ERROR(lexer->peek().offset0, "Expected ':=' or ':'");
+  }
+
+  Array<AST *> initializationValues = {};
+
+  if (expectInitialization) {
+    for (;;) {
+      auto expr = parseExpr(ctx, lexer, parsingFlags, error);
+      if (!expr) return NULL;
+
+      append(&initializationValues, expr, &ctx->allocator);
+      if (lexer->peek().type == TOKEN_TYPE_COMMA) {
+        lexer->eat();
+        continue;
+      } else {
+        break;
+      }
+    }
+  }
+
+  MATCH_TOKEN(semicolon, TOKEN_TYPE_SEMICOLON, "Expected ';'");
+
+  auto varDefn = AST_ALLOC(ASTVariableDefinition, &ctx->allocator);
+  varDefn->fileIndex = lexer->fileIndex;
+  varDefn->offset0 = identifiers[0]->offset0;
+  varDefn->offset1 = semicolon.offset1;
+  varDefn->names = identifiers;
+  varDefn->typeExpr = typeExpr;
+  varDefn->initilizationValues = initializationValues;
+  return varDefn;
+}
+
+
+DEFINE_PARSER(parseIfStatement) {
+  MATCH_TOKEN(ifToken, TOKEN_TYPE_IF, "Expected 'if' keyword");
+
+  auto conditionExpr = parseParenExpr(ctx, lexer, parsingFlags, error);
+  if (!conditionExpr) return NULL;
+
+  auto thenStatement = parseStatement(ctx, lexer, parsingFlags, error);
+  if (!thenStatement) return NULL;
+
+  AST *elseStatement = NULL;
+  if (lexer->peek().type == TOKEN_TYPE_ELSE) {
+    lexer->eat();
+    elseStatement = parseStatement(ctx, lexer, parsingFlags, error);
+    if (!elseStatement) return NULL;
+  }
+
+  auto ifStatement = AST_ALLOC(ASTIfStatement, &ctx->allocator);
+  ifStatement->fileIndex = lexer->fileIndex;
+  ifStatement->offset0 = ifToken.offset0;
+  if (elseStatement) {
+    ifStatement->offset1 = elseStatement->offset1;
+  } else {
+    ifStatement->offset1 = thenStatement->offset1;
+  }
+
+  ifStatement->conditionExpr = conditionExpr;
+  ifStatement->thenStatement = thenStatement;
+  ifStatement->elseStatement = elseStatement;
+  return ifStatement;
+}
+
+DEFINE_PARSER(parseWhileLoop) {
+  MATCH_TOKEN(whileToken, TOKEN_TYPE_WHILE, "Expected 'while' keyword");
+
+  auto conditionExpr = parseParenExpr(ctx, lexer, parsingFlags, error);
+  if (!conditionExpr) return NULL;
+
+  auto loopBody = parseStatement(ctx, lexer, parsingFlags, error);
+  if (!loopBody) return NULL;
+
+  auto loop = AST_ALLOC(ASTWhileLoop, &ctx->allocator);
+  loop->fileIndex = lexer->fileIndex;
+  loop->offset0 = whileToken.offset0;
+  loop->offset1 = loopBody->offset1;
+  loop->condition = conditionExpr;
+  loop->body = loopBody;
+  return loop;
+}
+
+DEFINE_PARSER(parseDeferStatement) {
+  MATCH_TOKEN(deferToken, TOKEN_TYPE_DEFER, "Expected 'defer' keyword");
+  auto statement = parseStatement(ctx, lexer, parsingFlags, error);
+  if (!statement) return NULL;
+
+  auto defer = AST_ALLOC(ASTDeferStatement, &ctx->allocator);
+  defer->fileIndex = lexer->fileIndex;
+  defer->offset0 = deferToken.offset0;
+  defer->offset1 = statement->offset1;
+  defer->statement = statement;
+  return defer;
+}
+
+DEFINE_PARSER(parseExprStatement) {
+  auto expr = parseExpr(ctx, lexer, parsingFlags, error);
+  if (!expr) return NULL;
+  MATCH_TOKEN(semicolon, TOKEN_TYPE_SEMICOLON, "Expected ';'");
+  return expr;
 }

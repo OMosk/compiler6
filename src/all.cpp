@@ -9,3 +9,5 @@
 #include "parsing/parser.cpp"
 
 #include "ast.cpp"
+#include "core_types.cpp"
+#include "reporting.cpp"

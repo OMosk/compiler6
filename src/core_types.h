@@ -4,6 +4,7 @@
 
 #include <inttypes.h>
 
+#include <pthread.h>
 #include <linux/limits.h> //PATH_MAX
 
 #include "utils/allocator.h"
@@ -23,6 +24,8 @@ struct GlobalData {
 
   char currentWorkingDirectory[PATH_MAX + 1];//4KB + 1
 };
+
+FileEntry file(GlobalData *globalData, int fileIndex);
 
 struct ThreadData {
   GlobalData *globalData;

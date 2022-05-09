@@ -24,10 +24,16 @@ FORWARD_DECLARE_PARSER(parseFile);
 FORWARD_DECLARE_PARSER(parseTopLevelDeclaration);
 FORWARD_DECLARE_PARSER(parseLoadDirective);
 FORWARD_DECLARE_PARSER(parseDeclaration);
+FORWARD_DECLARE_PARSER(parseVariableDefinition);
 FORWARD_DECLARE_PARSER(parseAnonymousStruct);
 FORWARD_DECLARE_PARSER(parseAnonymousFunction);
+
 FORWARD_DECLARE_PARSER(parseBlock);
 FORWARD_DECLARE_PARSER(parseStatement);
+FORWARD_DECLARE_PARSER(parseIfStatement);
+FORWARD_DECLARE_PARSER(parseWhileLoop);
+FORWARD_DECLARE_PARSER(parseDeferStatement);
+FORWARD_DECLARE_PARSER(parseExprStatement);
 
 FORWARD_DECLARE_PARSER(parseIdentifier);
 FORWARD_DECLARE_PARSER(parseStringLiteral);

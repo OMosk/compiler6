@@ -103,7 +103,22 @@ struct ASTBlock;
     Array<ASTVar *> returns;                                                   \
     ASTBlock *body;                                                            \
   })                                                                           \
-  XX(ASTBlock, { Array<AST *> statements; })
+  XX(ASTBlock, { Array<AST *> statements; })                                   \
+  XX(ASTVariableDefinition, {                                                  \
+    Array<ASTIdentifier *> names;                                              \
+    AST *typeExpr;                                                             \
+    Array<AST *> initilizationValues;                                          \
+  })                                                                           \
+  XX(ASTIfStatement, {                                                         \
+    AST *conditionExpr;                                                        \
+    AST *thenStatement;                                                        \
+    AST *elseStatement;                                                        \
+  })                                                                           \
+  XX(ASTWhileLoop, {                                                           \
+    AST *condition;                                                            \
+    AST *body;                                                                 \
+  })                                                                           \
+  XX(ASTDeferStatement, { AST *statement; })
 
 enum ASTNodeType {
 #define XX(NAME, STRUCT) NAME##_,
