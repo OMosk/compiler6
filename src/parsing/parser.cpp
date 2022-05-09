@@ -1,21 +1,29 @@
 #include "parser.h"
 
+AST *decorateParseFunctionCall(ParseFunction *fn, ThreadData *ctx, Lexer *lexer,
+                            uint64_t parsingFlags, ParsingError *error) {
+  Token positionBefore = lexer->peek();
+  ParsingError tmpError = {};
+  char *allocatorPositionBefore = ctx->allocator.current;
+  AST *result = fn(ctx, lexer, parsingFlags, &tmpError);
+  if (!result) {
+    if (tmpError.offset > error->offset)
+      *error = tmpError;
+    lexer->reset(positionBefore);
+    ctx->allocator.current = allocatorPositionBefore;
+  } else {
+    *error = {};
+  }
+  return result;
+}
+
 #define DEFINE_PARSER(NAME)                                                    \
   AST *NAME##Impl(ThreadData *ctx, Lexer *lexer, uint64_t parsingFlags,        \
                   ParsingError *error);                                        \
   AST *NAME(ThreadData *ctx, Lexer *lexer, uint64_t parsingFlags,              \
             ParsingError *error) {                                             \
-    Token positionBefore = lexer->peek();                                      \
-    ParsingError tmpError = {};                                                \
-    AST *result = NAME##Impl(ctx, lexer, parsingFlags, &tmpError);             \
-    if (!result) {                                                             \
-      if (tmpError.offset > error->offset)                                     \
-        *error = tmpError;                                                     \
-      lexer->reset(positionBefore);                                            \
-    } else {                                                                   \
-      *error = {};                                                             \
-    }                                                                          \
-    return result;                                                             \
+    return decorateParseFunctionCall(NAME##Impl, ctx, lexer, parsingFlags,     \
+                                     error);                                   \
   }                                                                            \
   AST *NAME##Impl(ThreadData *ctx, Lexer *lexer, uint64_t parsingFlags,        \
                   ParsingError *error)

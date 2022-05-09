@@ -14,6 +14,8 @@ struct ParsingError {
   const char *producerSourceCodeFile;
   int producerSourceCodeLine;
 };
+typedef AST *(ParseFunction)(ThreadData *ctx, Lexer *lexer,
+                             uint64_t parsingFlags, ParsingError *error);
 
 #define FORWARD_DECLARE_PARSER(NAME) \
   AST *NAME(ThreadData *ctx, Lexer *lexer, uint64_t parsingFlags, ParsingError *error)
