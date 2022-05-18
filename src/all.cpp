@@ -11,3 +11,5 @@
 #include "ast.cpp"
 #include "core_types.cpp"
 #include "reporting.cpp"
+
+#include "compiler.cpp"

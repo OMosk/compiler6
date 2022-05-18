@@ -15,4 +15,4 @@
 #include "ast.h"
 #include "reporting.h"
 
-
+#include "compiler.h"
