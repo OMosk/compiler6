@@ -371,9 +371,8 @@ DEFINE_PARSER(parseExpr) {
     binaryOp->right = rightOperand;
     binaryOp->op = op;
     binaryOp->fileIndex = lexer->fileIndex;
-    //TODO: come back to this and think again if this behavior is ok and correct
-    binaryOp->offset0 = operationToken.offset0;
-    binaryOp->offset1 = operationToken.offset1;
+    binaryOp->offset0 = left->offset0;
+    binaryOp->offset1 = rightOperand->offset1;
 
     auto leftBinaryOp = AST_CAST(ASTBinaryOp, left);
     if (leftBinaryOp) {
