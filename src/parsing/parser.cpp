@@ -47,6 +47,31 @@ AST *decorateParseFunctionCall(ParseFunction *fn, ThreadData *ctx, Lexer *lexer,
     return NULL;                                                               \
   } while (0)
 
+bool matchStatementBoundary(uint32_t prevOffset1, Lexer *lexer, ParsingError *error, const char *file, int line) {
+  auto nextTokenType = lexer->peek().type;
+  if (nextTokenType == TOKEN_TYPE_SEMICOLON || nextTokenType == TOKEN_TYPE_EOF) {
+    lexer->eat();
+    return true;
+  }
+  for (uint32_t i = prevOffset1, end = lexer->peek().offset0; i < end; ++i) {
+    if (lexer->source.data[i] == '\n') {
+      return true;
+    }
+  }
+  error->offset = prevOffset1;
+  error->message = STR("Expected statement boundary: ';' or newline");
+  error->producerSourceCodeFile = file;
+  error->producerSourceCodeLine = line;
+  return false;
+}
+
+#define MATCH_STATEMENT_BOUNDARY(PREV_OFFSET1)                                 \
+  do {                                                                         \
+    if (!matchStatementBoundary((PREV_OFFSET1), lexer, error, __FILE__,        \
+                                __LINE__))                                     \
+      return NULL;                                                             \
+  } while (0)
+
 Str slice(Str src, uint32_t offset0, uint32_t offset1) {
   auto result = Str{
       src.data + offset0,
@@ -409,6 +434,7 @@ DEFINE_PARSER(parseLoadDirective) {
   if (!stringLiteralBase) return NULL;
 
   auto stringLiteral = AST_CAST(ASTStringLiteral, stringLiteralBase);
+  MATCH_STATEMENT_BOUNDARY(stringLiteral->offset1);
 
   auto directive = AST_ALLOC(ASTLoadDirective, &ctx->allocator);
   directive->path = stringLiteral;
@@ -481,6 +507,7 @@ DEFINE_PARSER(parseDeclaration) {
   if (!thing) thing = parseAnonymousFunction(ctx, lexer, parsingFlags, error);
   if (!thing) thing = parseExpr(ctx, lexer, parsingFlags, error);
   if (!thing) return NULL;
+  MATCH_STATEMENT_BOUNDARY(thing->offset1);
 
   switch (thing->type) {
   case ASTStruct_: {
@@ -685,12 +712,19 @@ DEFINE_PARSER(parseVariableDefinition) {
     }
   }
 
-  MATCH_TOKEN(semicolon, TOKEN_TYPE_SEMICOLON, "Expected ';'");
+  uint32_t lastOffset1 = identifiers[identifiers.len - 1]->offset1;
+  if (typeExpr) {
+    lastOffset1 = typeExpr->offset1;
+  }
+  if (initializationValues.len) {
+    lastOffset1 = initializationValues[initializationValues.len - 1]->offset1;
+  }
+  MATCH_STATEMENT_BOUNDARY(lastOffset1);
 
   auto varDefn = AST_ALLOC(ASTVariableDefinition, &ctx->allocator);
   varDefn->fileIndex = lexer->fileIndex;
   varDefn->offset0 = identifiers[0]->offset0;
-  varDefn->offset1 = semicolon.offset1;
+  varDefn->offset1 = lastOffset1;
   varDefn->names = identifiers;
   varDefn->typeExpr = typeExpr;
   varDefn->initilizationValues = initializationValues;
@@ -763,6 +797,6 @@ DEFINE_PARSER(parseDeferStatement) {
 DEFINE_PARSER(parseExprStatement) {
   auto expr = parseExpr(ctx, lexer, parsingFlags, error);
   if (!expr) return NULL;
-  MATCH_TOKEN(semicolon, TOKEN_TYPE_SEMICOLON, "Expected ';'");
+  MATCH_STATEMENT_BOUNDARY(expr->offset1);
   return expr;
 }

@@ -441,15 +441,15 @@ TEST(ParsingFunctionMultipleArgsCombinedNoReturn) (T *t) {
 
 TEST(ParseBlockAndStatements) (T *t) {
   char src[] = R"mark({
-    size : i32 = 1024;
-    ptr := malloc(size);
+    size : i32 = 1024
+    ptr := malloc(size)
     if (ptr == NULL) {
-      abort();
+      abort()
     }
-    defer free(ptr);
-    i : int;
+    defer free(ptr)
+    i : int
     while (i < size) {
-      print(ptr[i]);
+      print(ptr[i])
     }
   })mark";
   auto setup = setupTestData(STR(src));
@@ -461,5 +461,21 @@ TEST(ParseBlockAndStatements) (T *t) {
     FAILF("Failed to parse block: at %u %.*s\n",
       error.offset, (int)error.message.len, error.message.data);
   }
-
+  auto block = AST_ASSERT_CAST(ASTBlock, ast);
+#define CHECK_NODE(I, TYPE)                                                    \
+  do {                                                                         \
+    if ((I) >= block->statements.len)                                          \
+      FAILF("%s:%d %d >= than length of block %u\n", __FILE__, __LINE__, (I),  \
+            block->statements.len);                                            \
+    if (block->statements[I]->type != (TYPE))                                  \
+      FAILF("%s:%d [%d] Expected %s, got: %s\n", __FILE__, __LINE__, (I),      \
+            toString(TYPE), toString(block->statements[I]->type));             \
+  } while (0)
+  CHECK_NODE(0, ASTVariableDefinition_);
+  CHECK_NODE(1, ASTVariableDefinition_);
+  CHECK_NODE(2, ASTIfStatement_);
+  CHECK_NODE(3, ASTDeferStatement_);
+  CHECK_NODE(4, ASTVariableDefinition_);
+  CHECK_NODE(5, ASTWhileLoop_);
+#undef CHECK_NODE
 }
