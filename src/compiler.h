@@ -4,6 +4,8 @@
 enum CompilerJobType {
   COMPILER_JOB_TYPE_READ_FILE,
   COMPILER_JOB_TYPE_PARSE,
+
+  COMPILER_JOB_TYPE_EXIT,
 };
 
 struct CompilerJob {
@@ -14,6 +16,9 @@ struct CompilerJob {
 
   //PARSE
   FileEntry fileEntry;
+
+  //EXIT
+  int status;
 
   CompilerJob *next;
 };
@@ -33,14 +38,15 @@ struct Compiler {
   CompilerJob *jobQueueTail;
   bool jobQueueShouldContinue;
   bool compilerFinished;
+  int exitStatus;
   pthread_mutex_t jobQueueMutex;
   pthread_cond_t jobQueueCond;
 };
 
-void initCompiler(Compiler *compiler, int threads);
+void initCompiler(Compiler *compiler, int threads, const char *entryPoint);
 void deinitCompiler(Compiler *compiler);
 CompilerJob *allocOrReuseCompilerJob(Compiler *compiler);
 void postCompilerJob(Compiler *compiler, CompilerJob *job);
-void waitForCompilerToFinish(Compiler *compiler);
+int waitForCompilerToFinish(Compiler *compiler);
 void executeJob(ThreadData *td, CompilerJob *job);
 

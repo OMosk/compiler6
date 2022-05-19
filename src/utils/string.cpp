@@ -31,3 +31,10 @@ bool StrEqual(Str a, Str b) {
   if (a.len != b.len) return false;
   return memcmp(a.data, b.data, a.len) == 0;
 }
+
+Str CStringToStr(const char *s) {
+  Str result = {};
+  result.data = (char *)s;
+  result.len = strlen(s);
+  return result;
+}

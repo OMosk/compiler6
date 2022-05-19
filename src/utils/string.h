@@ -15,3 +15,4 @@ struct Str {
 Str StrDup(Str s);
 Str SPrintf(Allocator *a, const char *fmt, ...);
 bool StrEqual(Str a, Str b);
+Str CStringToStr(const char *s);

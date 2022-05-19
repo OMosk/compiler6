@@ -7,15 +7,21 @@
 
 void *compilerThreadProc(void *arg);
 
-void initCompiler(Compiler *compiler, int threads) {
+void initCompiler(Compiler *compiler, int threads, const char *entryPoint) {
   *compiler = {};
   initGlobalData(&compiler->globalData);
   compiler->globalData.compiler = compiler;
   compiler->threads = threads;
 
-  compiler->memorySize = 64ull * 1024ull * 1024ull * 1024ull;
+  compiler->memorySize = 1ull * 1024ull * 1024ull * 1024ull;
+  size_t memoryPerThread = 100ull * 1024ull;
 
   //NOTE: addr and length should be multiple of 4096 (page size on linux)
+  if (compiler->memorySize % 4096) {
+    fprintf(stderr, "%s:%d Memory size is not multiple of 4096\n",
+      __FILE__, __LINE__);
+    abort();
+  }
   compiler->memory = mmap((void *)0x12345789000, compiler->memorySize,
       PROT_READ|PROT_WRITE,
       MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,
@@ -35,7 +41,6 @@ void initCompiler(Compiler *compiler, int threads) {
   compiler->jobQueueShouldContinue = true;
 
   for (int i = 0; i < threads; ++i) {
-    size_t memoryPerThread = 1024ull * 1024ull * 1024ull;
     auto memory = ALLOC_ARRAY(char, memoryPerThread, &compiler->mainAllocator);
     initThreadData(compiler->threadsData + i, &compiler->globalData, memory, memoryPerThread);
 
@@ -43,6 +48,11 @@ void initCompiler(Compiler *compiler, int threads) {
     pthread_create(&t, NULL, compilerThreadProc, compiler->threadsData + i);
     pthread_detach(t);
   }
+
+  auto job = allocOrReuseCompilerJob(compiler);
+  job->type = COMPILER_JOB_TYPE_READ_FILE;
+  job->fileNameToRead = CStringToStr(entryPoint);
+  postCompilerJob(compiler, job);
 }
 
 void deinitCompiler(Compiler *compiler) {
@@ -68,6 +78,8 @@ CompilerJob *allocOrReuseCompilerJob(Compiler *compiler) {
   compiler->jobFreelistNext = result->next;
 
   pthread_mutex_unlock(&compiler->jobQueueMutex);
+
+  *result = {};
   return result;
 }
 
@@ -97,7 +109,7 @@ void *compilerThreadProc(void *arg) {
     while (compiler->jobQueueHead == NULL && compiler->jobQueueShouldContinue) {
       pthread_cond_wait(&compiler->jobQueueCond, &compiler->jobQueueMutex);
     }
-    if (compiler->jobQueueShouldContinue) break;
+    if (!compiler->jobQueueShouldContinue) break;
 
     auto job = compiler->jobQueueHead;
     compiler->jobQueueHead = job->next;
@@ -105,27 +117,43 @@ void *compilerThreadProc(void *arg) {
     pthread_mutex_unlock(&compiler->jobQueueMutex);
     executeJob(td, job);
     pthread_mutex_lock(&compiler->jobQueueMutex);
+
+    job->next = compiler->jobFreelistNext;
+    compiler->jobFreelistNext = job;
   }
   pthread_mutex_unlock(&compiler->jobQueueMutex);
 
   return NULL;
 }
 
-void waitForCompilerToFinish(Compiler *compiler) {
+int waitForCompilerToFinish(Compiler *compiler) {
   pthread_mutex_lock(&compiler->jobQueueMutex);
   while (!compiler->compilerFinished) {
     pthread_cond_wait(&compiler->jobQueueCond, &compiler->jobQueueMutex);
   }
+  auto result = compiler->exitStatus;
   pthread_mutex_unlock(&compiler->jobQueueMutex);
+  return result;
 }
 
 void executeJob(ThreadData *td, CompilerJob *job) {
   switch (job->type) {
   case COMPILER_JOB_TYPE_READ_FILE: {
     //TODO: continue here
+
+    { //TODO Move exit code
+      auto newJob = allocOrReuseCompilerJob(td->globalData->compiler);
+      newJob->type = COMPILER_JOB_TYPE_EXIT;
+      postCompilerJob(td->globalData->compiler, newJob);
+    }
   } break;
   case COMPILER_JOB_TYPE_PARSE: {
     //TODO: continue here
+  } break;
+  case COMPILER_JOB_TYPE_EXIT: {
+    td->globalData->compiler->compilerFinished = true;
+    td->globalData->compiler->jobQueueShouldContinue = false;
+    pthread_cond_broadcast(&td->globalData->compiler->jobQueueCond);
   } break;
   default: abort();
   }
